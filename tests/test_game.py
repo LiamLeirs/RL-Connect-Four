@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.envs.connect_four import ConnectFour
+from src.envs.connect_four.game import ConnectFour
 
 
 # ---------------------------------------------------------------------------
