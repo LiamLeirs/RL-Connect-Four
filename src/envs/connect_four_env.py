@@ -1,15 +1,82 @@
 import gymnasium as gym
 import numpy as np
-from src.envs.connect_four.game import ConnectFour
+from src.envs.connect_four.game import ConnectFour, MoveResult
 from src.agents.opponents import RandomOpponent
 
 class ConnectFourEnv(gym.Env):
-    def __init__(self, num_rows=6, num_cols=7, win_req=4):
+    metadata = {
+        "render_modes": ["human", "rgb_array"],
+        "render_fps": 60,
+    }
+    def __init__(self, num_rows=6, num_cols=7, win_req=4, render_mode=None):
         super().__init__()
+        if render_mode not in {None, "human", "rgb_array"}:
+            raise ValueError(f"Unsupported render mode: {render_mode}")
+        
         self.game = ConnectFour(num_cols=num_cols, num_rows=num_rows, win_req=win_req)
         self.action_space = gym.spaces.Discrete(self.game.num_cols)
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(2, self.game.num_rows, self.game.num_cols), dtype=np.float32)
         self.opponent = RandomOpponent()
+        self.render_mode = render_mode
+        self.renderer = None
+
+    def _ensure_renderer(self):
+        if self.renderer is None:
+            from src.envs.connect_four.renderer import ConnectFourRenderer
+
+            self.renderer = ConnectFourRenderer(
+                num_rows=self.game.num_rows,
+                num_cols=self.game.num_cols,
+                fps=self.metadata["render_fps"],
+            )
+
+    def _animate_move(self, result: MoveResult) -> None:
+        if self.render_mode != "human":
+            return
+
+        self._ensure_renderer()
+
+        self.renderer.start_drop_animation(
+            row=result.row,
+            column=result.col,
+            player=result.player,
+        )
+
+        while self.renderer.is_animating:
+            if not self.renderer.process_events():
+                self.close()
+                raise KeyboardInterrupt("Pygame window closed.")
+
+            self.renderer.draw_human(
+                board=self.game.get_board(),
+                current_player=self.game.get_current_player(),
+                winner=self.game.get_winner(),
+            )
+
+    def render(self):
+        if self.render_mode is None:
+            return None
+
+        self._ensure_renderer()
+
+        if self.render_mode == "human":
+            self.renderer.draw(
+                board=self.game.get_board(),
+                current_player=self.game.get_current_player(),
+                winner=self.game.get_winner(),
+            )
+            return None
+
+        if self.render_mode == "rgb_array":
+            return self.renderer.render_rgb_array(
+                board=self.game.get_board(),
+                current_player=self.game.get_current_player(),
+                winner=self.game.get_winner(),
+            )
+
+        raise RuntimeError(
+            f"Unexpected render mode: {self.render_mode}"
+        )
 
     def _get_observation_for(self, player: int) -> np.ndarray:
         board = self.game.get_board()
@@ -23,12 +90,13 @@ class ConnectFourEnv(gym.Env):
         ).astype(np.float32)
         return observation
 
-    def _get_info(self) -> dict:
+    def _get_info(self, result: MoveResult | None = None) -> dict:
         return {
         "action_mask": self.action_masks(),
         "winner": self.game.get_winner(),
         "agent_player": self.agent_player,
         "opponent_player": self.opponent_player,
+        "result": result,
     }
 
     def action_masks(self) -> np.ndarray:
@@ -37,6 +105,7 @@ class ConnectFourEnv(gym.Env):
     def reset(self,*, seed=None, options=None):
         super().reset(seed=seed)
         self.game.reset()
+        result = None
         if self.np_random.random() < 0.5:
             self.agent_player = 1
             self.opponent_player = -1
@@ -46,7 +115,10 @@ class ConnectFourEnv(gym.Env):
         if self.agent_player == -1:
             opponent_action = self._choose_opponent_action()
             result = self.game.make_move(opponent_action)
-        return self._get_observation_for(self.agent_player), self._get_info()
+            self._animate_move(result)
+        if self.render_mode == "human":
+            self.render()
+        return self._get_observation_for(self.agent_player), self._get_info(result)
 
     def _reward_from_winner(self, winner: int | None) -> float:
         if winner is None or winner == 0:
@@ -66,6 +138,18 @@ class ConnectFourEnv(gym.Env):
     @property
     def agent_turn(self) -> bool:
         return self.game.get_current_player() == self.agent_player
+
+    def _transition(self, reward: float, terminated: bool, info: dict,):
+        if self.render_mode == "human":
+            self.render()
+
+        return (
+            self._get_observation_for(self.agent_player),
+            float(reward),
+            bool(terminated),
+            False,
+            info,
+        )
     
     def step(self, action: int):
         if not self.agent_turn:
@@ -81,6 +165,7 @@ class ConnectFourEnv(gym.Env):
             self.game.skip_turn()
             opponent_action = self._choose_opponent_action()
             opponent_result = self.game.make_move(opponent_action)
+            self._animate_move(opponent_result)
             if opponent_result is False:
                 raise RuntimeError("Opponent selected an illegal action.")
             terminated = opponent_result.winner is not None
@@ -88,30 +173,23 @@ class ConnectFourEnv(gym.Env):
                 reward = self._reward_from_winner(opponent_result.winner)
             else:
                 reward = -0.1
-            info = self._get_info()
+            info = self._get_info(opponent_result)
             info["agent_action"] = action
             info["opponent_action"] = opponent_action
             info["illegal_action"] = True
-            return (
-                self._get_observation_for(self.agent_player),
-                reward,
-                terminated,
-                False,
-                info,
-            )
+            return self._transition(reward, terminated, info)
 
         # Learner move
         agent_result = self.game.make_move(action)
+        self._animate_move(agent_result)
 
         if agent_result.winner is not None:
-            return (
-                self._get_observation_for(self.agent_player),
+            return self._transition(
                 self._reward_from_winner(agent_result.winner),
                 True,
-                False,
-                self._get_info(),
+                self._get_info(agent_result)
             )
-
+        
         # Opponent move
         opponent_action = self._choose_opponent_action()
         opponent_result = self.game.make_move(opponent_action)
@@ -119,35 +197,33 @@ class ConnectFourEnv(gym.Env):
         if opponent_result is False:
             raise RuntimeError("Opponent selected an illegal action.")
 
+        self._animate_move(opponent_result)
         terminated = opponent_result.winner is not None
         reward = self._reward_from_winner(
             opponent_result.winner
         )
 
-        info = self._get_info()
+        info = self._get_info(opponent_result)
         info["agent_action"] = action
         info["opponent_action"] = opponent_action
 
-        return (
-            self._get_observation_for(self.agent_player),
-            reward,
-            terminated,
-            False,
-            info,
-        )
+        return self._transition(reward, terminated, info)
+
+    def close(self):
+        if self.renderer is not None:
+            self.renderer.close()
+            self.renderer = None
 
 if __name__ == "__main__":
-    from stable_baselines3.common.env_checker import check_env
-    env = ConnectFourEnv()
-    check_env(env, warn=True)
-    for episode in range(1000):
-        obs, info = env.reset(seed=episode)
-        terminated = False
+    from gymnasium.wrappers import RecordVideo
+    env = ConnectFourEnv(render_mode="rgb_array")
+    env = RecordVideo(env, f"videos/connect_four.mp4")
+    obs, info = env.reset()
+    terminated = False
 
-        while not terminated:
-            legal = np.flatnonzero(info["action_mask"])
-            action = int(env.np_random.choice(legal))
+    while not terminated:
+        legal = np.flatnonzero(info["action_mask"])
+        action = int(env.np_random.choice(legal))
 
-            obs, reward, terminated, truncated, info = env.step(action)
-
-    print("Completed 1,000 episodes.")
+        obs, reward, terminated, truncated, info = env.step(action)
+    env.close()
