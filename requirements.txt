@@ -1,0 +1,35 @@
+# Reinforcement learning
+gymnasium==1.3.0
+stable-baselines3==2.9.0
+sb3-contrib==2.9.0
+pettingzoo==1.26.1
+
+# Numerical and data tools
+numpy==2.2.6
+pandas>=2.2,<3
+matplotlib>=3.9,<4
+
+# Rendering and video
+pygame==2.6.1
+imageio>=2.37,<3
+imageio-ffmpeg>=0.6,<1
+opencv-python>=4.11,<5
+
+# Experiment tracking
+tensorboard>=2.18,<3
+wandb>=0.22.3,<0.27
+
+# Notebooks
+jupyterlab>=4.3,<5
+ipykernel>=6.29,<7
+ipywidgets>=8.1,<9
+
+# Utilities
+tqdm>=4.67,<5
+pyyaml>=6.0,<7
+
+# Testing and code quality
+pytest>=8.3,<9
+pytest-cov>=6,<8
+ruff>=0.9,<1
+mypy>=1.14,<2
