@@ -15,5 +15,11 @@
     "average_game_length": 7.437,
     "illegal_moves": 0,
     "illegal_moves_per_episode": 0.0,
-    "illegal_action_rate": 0.0
+    "illegal_action_rate": 0.0,
+    "evaluation": {
+        "agent_type": "ppo",
+        "opponent_type": "tactical",
+        "agent_model_path": "models\\ppo_random\\final_model",
+        "opponent_model_path": null
+    }
 }

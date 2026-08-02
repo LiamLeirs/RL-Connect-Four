@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from src.envs.connect_four.game import ConnectFour, MoveResult
-from src.agents.agents import RandomOpponent, HumanOpponent, TacticalOpponent,ModelOpponent
+from src.agents.agents import RandomAgent, HumanAgent, TacticalAgent,ModelAgent
 import torch
 from sb3_contrib import MaskablePPO
 
@@ -10,7 +10,7 @@ class ConnectFourEnv(gym.Env):
         "render_modes": ["human", "rgb_array"],
         "render_fps": 60,
     }
-    def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=RandomOpponent(), render_mode=None):
+    def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=RandomAgent(), render_mode=None):
         super().__init__()
         if render_mode not in {None, "human", "rgb_array"}:
             raise ValueError(f"Unsupported render mode: {render_mode}")
@@ -21,10 +21,10 @@ class ConnectFourEnv(gym.Env):
         self.opponent = opponent
         self.render_mode = render_mode
         self.renderer = None
-        if isinstance(self.opponent, HumanOpponent):
+        if isinstance(self.opponent, HumanAgent):
             assert self.render_mode == "human", "HumanOpponent requires render_mode='human'"
-        if isinstance(self.opponent, TacticalOpponent):
-            self.opponent = TacticalOpponent(game=self.game)
+        if isinstance(self.opponent, TacticalAgent):
+            self.opponent = TacticalAgent(game=self.game)
 
     def _ensure_renderer(self):
         if self.renderer is None:
@@ -36,7 +36,7 @@ class ConnectFourEnv(gym.Env):
                 fps=self.metadata["render_fps"],
             )
 
-            if isinstance(self.opponent, HumanOpponent):
+            if isinstance(self.opponent, HumanAgent):
                 self.opponent.renderer = self.renderer
                 self.opponent.game = self.game
 
@@ -145,10 +145,10 @@ class ConnectFourEnv(gym.Env):
 
     def set_opponent(self, opponent):
         self.opponent = opponent
-        if isinstance(self.opponent, HumanOpponent):
+        if isinstance(self.opponent, HumanAgent):
             assert self.render_mode == "human", "HumanOpponent requires render_mode='human'"
-        if isinstance(self.opponent, TacticalOpponent):
-            self.opponent = TacticalOpponent(game=self.game)
+        if isinstance(self.opponent, TacticalAgent):
+            self.opponent = TacticalAgent(game=self.game)
 
     def _choose_opponent_action(self) -> int:
         return self.opponent.select_action(self._get_observation_for(self.opponent_player), self.action_masks(), self.np_random)
@@ -233,9 +233,9 @@ class ConnectFourEnv(gym.Env):
             self.renderer = None
 
 if __name__ == "__main__":
-    opponent = TacticalOpponent(game=None)
+    opponent = TacticalAgent(game=None)
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
-    agent = ModelOpponent(model=MaskablePPO.load("models/ppo_random/final_model"), deterministic=True)
+    agent = ModelAgent(model=MaskablePPO.load("models/ppo_random/final_model"), deterministic=True)
     obs, info = env.reset()
     terminated = False
     running = True
