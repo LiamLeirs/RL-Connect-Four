@@ -1,0 +1,19 @@
+{
+    "seed": 0,
+    "num_episodes": 1000,
+    "agent_wins": 224,
+    "opponent_wins": 776,
+    "draws": 0,
+    "agent_win_rate": 0.224,
+    "opponent_win_rate": 0.776,
+    "draw_rate": 0.0,
+    "agent_first_games": 484,
+    "agent_second_games": 516,
+    "agent_first_win_rate": 0.4628099173553719,
+    "agent_second_win_rate": 0.0,
+    "average_reward": -0.552,
+    "average_game_length": 7.437,
+    "illegal_moves": 0,
+    "illegal_moves_per_episode": 0.0,
+    "illegal_action_rate": 0.0
+}

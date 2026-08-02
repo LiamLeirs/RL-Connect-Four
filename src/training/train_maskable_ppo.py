@@ -4,9 +4,9 @@ from pathlib import Path
 
 from sb3_contrib import MaskablePPO
 
-from src.agents.opponents import ModelOpponent, RandomOpponent
+from src.agents.agents import ModelAgent, RandomAgent
 from src.envs.connect_four_env import ConnectFourEnv
-from src.evaluation.evaluate_agent import evaluate_agent
+from src.evaluation.evaluator import evaluate_agent
 
 
 def parse_args():
@@ -71,7 +71,7 @@ def main():
     )
 
     train_env = ConnectFourEnv(
-        opponent=RandomOpponent(),
+        opponent=RandomAgent(),
         render_mode=None,
     )
 
@@ -109,11 +109,11 @@ def main():
         train_env.close()
 
     eval_env = ConnectFourEnv(
-        opponent=RandomOpponent(),
+        opponent=RandomAgent(),
         render_mode=None,
     )
 
-    trained_agent = ModelOpponent(
+    trained_agent = ModelAgent(
         model=model,
         deterministic=True,
     )
@@ -121,7 +121,7 @@ def main():
     results = evaluate_agent(
         env=eval_env,
         agent=trained_agent,
-        opponent=RandomOpponent(),
+        opponent=RandomAgent(),
         num_episodes=args.num_eval_episodes,
         seed=args.seed + 10_000,
         )

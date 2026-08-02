@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from src.envs.connect_four.game import ConnectFour, MoveResult
-from src.agents.opponents import RandomOpponent, HumanOpponent, ModelOpponent
+from src.agents.agents import RandomOpponent, HumanOpponent, TacticalOpponent,ModelOpponent
 import torch
 from sb3_contrib import MaskablePPO
 
@@ -23,6 +23,8 @@ class ConnectFourEnv(gym.Env):
         self.renderer = None
         if isinstance(self.opponent, HumanOpponent):
             assert self.render_mode == "human", "HumanOpponent requires render_mode='human'"
+        if isinstance(self.opponent, TacticalOpponent):
+            self.opponent = TacticalOpponent(game=self.game)
 
     def _ensure_renderer(self):
         if self.renderer is None:
@@ -143,6 +145,10 @@ class ConnectFourEnv(gym.Env):
 
     def set_opponent(self, opponent):
         self.opponent = opponent
+        if isinstance(self.opponent, HumanOpponent):
+            assert self.render_mode == "human", "HumanOpponent requires render_mode='human'"
+        if isinstance(self.opponent, TacticalOpponent):
+            self.opponent = TacticalOpponent(game=self.game)
 
     def _choose_opponent_action(self) -> int:
         return self.opponent.select_action(self._get_observation_for(self.opponent_player), self.action_masks(), self.np_random)
@@ -227,15 +233,19 @@ class ConnectFourEnv(gym.Env):
             self.renderer = None
 
 if __name__ == "__main__":
-    opponent = HumanOpponent(renderer=None, game=None)
-    agent = ModelOpponent(model=MaskablePPO.load("models/ppo_random/final_model"), deterministic=True)
+    opponent = TacticalOpponent(game=None)
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
+    agent = ModelOpponent(model=MaskablePPO.load("models/ppo_random/final_model"), deterministic=True)
     obs, info = env.reset()
     terminated = False
+    running = True
+    terminated = False
 
-    while not terminated:
-        legal = np.flatnonzero(info["action_mask"])
-        action = agent.select_action(obs, info["action_mask"])
-
-        obs, reward, terminated, truncated, info = env.step(action)
+    while running:
+        running = env.renderer.update()
+        if not terminated:
+            legal = np.flatnonzero(info["action_mask"])
+            action = agent.select_action(obs, info["action_mask"])
+            obs, reward, terminated, truncated, info = env.step(action)
+        env.render()
     env.close()

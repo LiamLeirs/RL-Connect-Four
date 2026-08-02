@@ -1,28 +1,8 @@
-import argparse
-import json
-from pathlib import Path
-
-import numpy as np
-
-from src.agents.opponents import RandomOpponent
-from src.envs.connect_four_env import ConnectFourEnv
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--num-episodes", type=int, default=1000)
-    parser.add_argument(
-        "--save-path",
-        type=Path,
-        default=Path("results/random_vs_random.json"),
-    )
-    return parser.parse_args()
-
+from src.agents.agents import RandomAgent
 
 def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
     if opponent is None:
-        opponent = RandomOpponent()
+        opponent = RandomAgent()
 
     env.set_opponent(opponent)
 
@@ -143,43 +123,3 @@ def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
             total_steps,
         ),
     }
-
-
-def main():
-    args = parse_args()
-
-    agent = RandomOpponent()
-    opponent = RandomOpponent()
-
-    env = ConnectFourEnv(
-        render_mode=None,
-        opponent=opponent,
-    )
-
-    try:
-        results = evaluate_agent(
-            env=env,
-            agent=agent,
-            opponent=opponent,
-            num_episodes=args.num_episodes,
-            seed=args.seed,
-        )
-    finally:
-        env.close()
-
-    args.save_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    with args.save_path.open(
-        "w",
-        encoding="utf-8",
-    ) as file:
-        json.dump(results, file, indent=4)
-
-    print(json.dumps(results, indent=4))
-
-
-if __name__ == "__main__":
-    main()
