@@ -1,7 +1,8 @@
 import gymnasium as gym
 import numpy as np
+from src.envs.connect_four.renderer import RendererEvent
 from src.envs.connect_four.game import ConnectFour, MoveResult
-from src.agents.agents import RandomAgent, HumanAgent, TacticalAgent,ModelAgent
+from src.agents.agents import RandomAgent, HumanAgent, TacticalAgent, ModelAgent
 import torch
 from sb3_contrib import MaskablePPO
 
@@ -238,7 +239,7 @@ class ConnectFourEnv(gym.Env):
             self.renderer = None
 
 if __name__ == "__main__":
-    opponent = TacticalAgent(game=None)
+    opponent = HumanAgent()
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
     agent = ModelAgent(model=MaskablePPO.load("models/ppo_random/final_model"), deterministic=True)
     obs, info = env.reset()
@@ -247,7 +248,13 @@ if __name__ == "__main__":
     terminated = False
 
     while running:
-        running = env.renderer.update()
+        event = env.renderer.update()
+        if event == RendererEvent.QUIT:
+            running = False
+            continue 
+        elif event == RendererEvent.RESET:
+            obs, info = env.reset()
+            terminated = False
         if not terminated:
             legal = np.flatnonzero(info["action_mask"])
             action = agent.select_action(obs, info["action_mask"])

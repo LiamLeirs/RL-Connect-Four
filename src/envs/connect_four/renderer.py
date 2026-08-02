@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from typing import TypedDict
-
+from enum import Enum, auto
 import numpy as np
 import pygame
 
+class RendererEvent(Enum):
+    NONE = auto()
+    QUIT = auto()
+    RESET = auto()
 
 class FallingPiece(TypedDict):
     row: int
@@ -527,14 +531,13 @@ class ConnectFourRenderer:
 
         delta_time = self.clock.tick(self.fps) / 1000.0
 
-        if not self.process_events():
-            return False
+        event = self.process_events()
 
         self.update_hover(pygame.mouse.get_pos())
         self._update_hover_animation(delta_time)
         self._update_drop_animation(delta_time)
 
-        return True
+        return event
 
     # ------------------------------------------------------------------
     # Events and cleanup
@@ -543,19 +546,21 @@ class ConnectFourRenderer:
     def process_events(self) -> bool:
         """
         Process basic window events.
-
-        Returns False when the window is closed.
         """
         self.open()
         for event in pygame.event.get():
 
             if event.type == pygame.QUIT:
-                return False
+                return RendererEvent.QUIT
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 self.clicked_column = event.pos[0] // self.cell_size
 
-        return True
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    return RendererEvent.RESET
+
+        return RendererEvent.NONE
 
     def consume_click(self):
         click = self.clicked_column
