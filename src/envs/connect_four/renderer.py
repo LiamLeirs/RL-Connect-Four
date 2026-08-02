@@ -60,6 +60,8 @@ class ConnectFourRenderer:
         self.falling_piece: FallingPiece | None = None
         self.drop_gravity = 3_000.0
 
+        self.clicked_column: int | None = None
+
     # ------------------------------------------------------------------
     # Initialization
     # ------------------------------------------------------------------
@@ -101,25 +103,15 @@ class ConnectFourRenderer:
     # ------------------------------------------------------------------
 
     def draw_human(
-        self,
-        board: np.ndarray,
-        current_player: int | None = None,
-        winner: int | None = None,
-    ) -> None:
-        """
-        Draw one frame in a live Pygame window.
-
-        This automatically advances hover and falling-piece animations.
-        """
+    self,
+    board: np.ndarray,
+    current_player: int | None = None,
+    winner: int | None = None,
+) -> None:
+        """Draw the current visual state to the Pygame window."""
         self.open()
 
         assert self.window is not None
-        assert self.clock is not None
-
-        delta_time = self.clock.tick(self.fps) / 1_000.0
-
-        self.update_hover(pygame.mouse.get_pos())
-        self.update(delta_time)
 
         frame = self._create_frame(
             board=board,
@@ -131,6 +123,8 @@ class ConnectFourRenderer:
 
         self.window.blit(frame, (0, 0))
         pygame.display.flip()
+
+        
 
     def render_rgb_array(
         self,
@@ -521,18 +515,26 @@ class ConnectFourRenderer:
     # Animation update
     # ------------------------------------------------------------------
 
-    def update(
-        self,
-        delta_time: float,
-    ) -> None:
-        """Advance all active animations."""
-        if delta_time < 0:
-            raise ValueError(
-                "delta_time cannot be negative."
-            )
+    def update(self) -> bool:
+        """
+        Process input and advance animations by one frame.
 
+        Returns False if the user closes the window.
+        """
+        self.open()
+
+        assert self.clock is not None
+
+        delta_time = self.clock.tick(self.fps) / 1000.0
+
+        if not self.process_events():
+            return False
+
+        self.update_hover(pygame.mouse.get_pos())
         self._update_hover_animation(delta_time)
         self._update_drop_animation(delta_time)
+
+        return True
 
     # ------------------------------------------------------------------
     # Events and cleanup
@@ -546,10 +548,19 @@ class ConnectFourRenderer:
         """
         self.open()
         for event in pygame.event.get():
+
             if event.type == pygame.QUIT:
                 return False
 
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                self.clicked_column = event.pos[0] // self.cell_size
+
         return True
+
+    def consume_click(self):
+        click = self.clicked_column
+        self.clicked_column = None
+        return click
 
     def close(self) -> None:
         """Release Pygame resources."""

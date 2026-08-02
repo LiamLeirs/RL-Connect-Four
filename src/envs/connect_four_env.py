@@ -1,14 +1,14 @@
 import gymnasium as gym
 import numpy as np
 from src.envs.connect_four.game import ConnectFour, MoveResult
-from src.agents.opponents import RandomOpponent
+from src.agents.opponents import RandomOpponent, HumanOpponent
 
 class ConnectFourEnv(gym.Env):
     metadata = {
         "render_modes": ["human", "rgb_array"],
         "render_fps": 60,
     }
-    def __init__(self, num_rows=6, num_cols=7, win_req=4, render_mode=None):
+    def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=RandomOpponent(), render_mode=None):
         super().__init__()
         if render_mode not in {None, "human", "rgb_array"}:
             raise ValueError(f"Unsupported render mode: {render_mode}")
@@ -16,9 +16,11 @@ class ConnectFourEnv(gym.Env):
         self.game = ConnectFour(num_cols=num_cols, num_rows=num_rows, win_req=win_req)
         self.action_space = gym.spaces.Discrete(self.game.num_cols)
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(2, self.game.num_rows, self.game.num_cols), dtype=np.float32)
-        self.opponent = RandomOpponent()
+        self.opponent = opponent
         self.render_mode = render_mode
         self.renderer = None
+        if isinstance(self.opponent, HumanOpponent):
+            assert self.render_mode == "human", "HumanOpponent requires render_mode='human'"
 
     def _ensure_renderer(self):
         if self.renderer is None:
@@ -29,6 +31,10 @@ class ConnectFourEnv(gym.Env):
                 num_cols=self.game.num_cols,
                 fps=self.metadata["render_fps"],
             )
+
+            if isinstance(self.opponent, HumanOpponent):
+                self.opponent.renderer = self.renderer
+                self.opponent.game = self.game
 
     def _animate_move(self, result: MoveResult) -> None:
         if self.render_mode != "human":
@@ -43,7 +49,9 @@ class ConnectFourEnv(gym.Env):
         )
 
         while self.renderer.is_animating:
-            if not self.renderer.process_events():
+            running = self.renderer.update()
+
+            if not running:
                 self.close()
                 raise KeyboardInterrupt("Pygame window closed.")
 
@@ -216,8 +224,8 @@ class ConnectFourEnv(gym.Env):
 
 if __name__ == "__main__":
     from gymnasium.wrappers import RecordVideo
-    env = ConnectFourEnv(render_mode="rgb_array")
-    env = RecordVideo(env, f"videos/connect_four.mp4")
+    opponent = HumanOpponent(renderer=None, game=None)
+    env = ConnectFourEnv(render_mode="human", opponent=opponent)
     obs, info = env.reset()
     terminated = False
 
