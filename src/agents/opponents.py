@@ -3,11 +3,11 @@ import pygame
 
 
 class Opponent:
-    def select_action(self, observation, action_mask, rng):
+    def select_action(self, observation, action_mask, rng=np.random):
         raise NotImplementedError
 
 class RandomOpponent(Opponent):
-    def select_action(self, observation, action_mask, rng):
+    def select_action(self, observation, action_mask, rng=np.random):
         legal = np.flatnonzero(action_mask)
         return int(rng.choice(legal))
 
@@ -16,7 +16,7 @@ class HumanOpponent(Opponent):
         self.renderer = renderer
         self.game = game
 
-    def select_action(self, observation, action_mask, rng):
+    def select_action(self, observation, action_mask, rng=np.random):
         if self.renderer is None or self.game is None:
             raise RuntimeError(
                 "HumanOpponent requires a renderer and game."
