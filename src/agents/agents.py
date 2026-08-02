@@ -1,6 +1,7 @@
 import numpy as np
 import pygame
 from src.envs.connect_four.game import ConnectFour
+from src.envs.connect_four.renderer import ConnectFourRenderer
 import copy
 
 class Agent:
