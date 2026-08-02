@@ -4,7 +4,7 @@ from gymnasium.spaces import Box, Discrete
 from stable_baselines3.common.env_checker import check_env
 
 from src.envs.connect_four_env import ConnectFourEnv
-from src.agents.opponents import HumanOpponent, Opponent
+from src.agents.agents import HumanOpponent, Opponent
 
 
 # ---------------------------------------------------------------------------

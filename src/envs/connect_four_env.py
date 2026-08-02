@@ -10,7 +10,7 @@ class ConnectFourEnv(gym.Env):
         "render_modes": ["human", "rgb_array"],
         "render_fps": 60,
     }
-    def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=RandomAgent(), render_mode=None):
+    def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=None, render_mode=None):
         super().__init__()
         if render_mode not in {None, "human", "rgb_array"}:
             raise ValueError(f"Unsupported render mode: {render_mode}")
@@ -18,13 +18,12 @@ class ConnectFourEnv(gym.Env):
         self.game = ConnectFour(num_cols=num_cols, num_rows=num_rows, win_req=win_req)
         self.action_space = gym.spaces.Discrete(self.game.num_cols)
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(2, self.game.num_rows, self.game.num_cols), dtype=np.float32)
-        self.opponent = opponent
         self.render_mode = render_mode
         self.renderer = None
-        if isinstance(self.opponent, HumanAgent):
-            assert self.render_mode == "human", "HumanOpponent requires render_mode='human'"
-        if isinstance(self.opponent, TacticalAgent):
-            self.opponent = TacticalAgent(game=self.game)
+
+        self.opponent = opponent or RandomAgent()
+        self._attach_opponent()
+        
 
     def _ensure_renderer(self):
         if self.renderer is None:
@@ -35,10 +34,6 @@ class ConnectFourEnv(gym.Env):
                 num_cols=self.game.num_cols,
                 fps=self.metadata["render_fps"],
             )
-
-            if isinstance(self.opponent, HumanAgent):
-                self.opponent.renderer = self.renderer
-                self.opponent.game = self.game
 
     def _animate_move(self, result: MoveResult) -> None:
         if self.render_mode != "human":
@@ -119,6 +114,7 @@ class ConnectFourEnv(gym.Env):
             self._ensure_renderer()
         super().reset(seed=seed)
         self.game.reset()
+        self.opponent.on_episode_start(self.np_random)
         result = None
         if self.np_random.random() < 0.5:
             self.agent_player = 1
@@ -145,10 +141,19 @@ class ConnectFourEnv(gym.Env):
 
     def set_opponent(self, opponent):
         self.opponent = opponent
-        if isinstance(self.opponent, HumanAgent):
-            assert self.render_mode == "human", "HumanOpponent requires render_mode='human'"
-        if isinstance(self.opponent, TacticalAgent):
-            self.opponent = TacticalAgent(game=self.game)
+        self._attach_opponent()
+
+    def _attach_opponent(self) -> None:
+        renderer = None
+
+        if self.render_mode == "human":
+            self._ensure_renderer()
+            renderer = self.renderer
+
+        self.opponent.attach(
+            game=self.game,
+            renderer=renderer,
+        )
 
     def _choose_opponent_action(self) -> int:
         return self.opponent.select_action(self._get_observation_for(self.opponent_player), self.action_masks(), self.np_random)

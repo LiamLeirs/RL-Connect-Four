@@ -4,7 +4,19 @@ from src.envs.connect_four.game import ConnectFour
 import copy
 
 class Agent:
-    def select_action(self, observation, action_mask, rng=np.random):
+    def attach(self, *, game: ConnectFour, renderer: ConnectFourRenderer | None) -> None:
+        """
+        Called when the agent is assigned to an environment.
+        """
+        pass
+
+    def on_episode_start(self,rng: np.random.Generator,) -> None:
+        """
+        Called once at the beginning of every episode.
+        """
+        pass
+
+    def select_action(self, observation: np.ndarray, action_mask: np.ndarray, rng: np.random.Generator) -> int:
         raise NotImplementedError
 
 class RandomAgent(Agent):
@@ -13,9 +25,18 @@ class RandomAgent(Agent):
         return int(rng.choice(legal))
 
 class HumanAgent(Agent):
-    def __init__(self, renderer=None, game=None):
-        self.renderer = renderer
+    def __init__(self):
+        self.renderer = None
+        self.game = None
+
+    def attach(self, *, game, renderer) -> None:
+        if renderer is None:
+            raise ValueError(
+                "HumanAgent requires a renderer."
+            )
+
         self.game = game
+        self.renderer = renderer
 
     def select_action(self, observation, action_mask, rng=np.random):
         if self.renderer is None or self.game is None:
@@ -53,7 +74,10 @@ class ModelAgent(Agent):
         return int(action)
 
 class TacticalAgent(Agent):
-    def __init__(self, game=None):
+    def __init__(self):
+        self.game = None
+
+    def attach(self, *, game, renderer) -> None:
         self.game = game
 
     def select_action(self, observation, action_mask, rng=np.random):
