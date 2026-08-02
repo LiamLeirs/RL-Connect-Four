@@ -1,0 +1,25 @@
+{
+    "seed": 10000,
+    "num_episodes": 5000,
+    "agent_wins": 4860,
+    "opponent_wins": 140,
+    "draws": 0,
+    "agent_win_rate": 0.972,
+    "opponent_win_rate": 0.028,
+    "draw_rate": 0.0,
+    "agent_first_games": 2556,
+    "agent_second_games": 2444,
+    "agent_first_win_rate": 0.9855242566510172,
+    "agent_second_win_rate": 0.9578559738134206,
+    "average_reward": 0.944,
+    "average_game_length": 5.1222,
+    "illegal_moves": 0,
+    "illegal_moves_per_episode": 0.0,
+    "illegal_action_rate": 0.0,
+    "training": {
+        "seed": 0,
+        "total_timesteps": 250000,
+        "gamma": 0.99,
+        "model_path": "models\\ppo_random\\final_model"
+    }
+}

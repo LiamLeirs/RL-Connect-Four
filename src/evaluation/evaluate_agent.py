@@ -20,7 +20,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def evaluate_agent(env, args, agent, opponent=None):
+def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
     if opponent is None:
         opponent = RandomOpponent()
 
@@ -39,9 +39,9 @@ def evaluate_agent(env, args, agent, opponent=None):
     total_reward = 0.0
     total_steps = 0
 
-    for episode in range(args.num_episodes):
+    for episode in range(num_episodes):
         observation, info = env.reset(
-            seed=args.seed + episode
+            seed=seed + episode
         )
 
         agent_player = info["agent_player"]
@@ -98,22 +98,22 @@ def evaluate_agent(env, args, agent, opponent=None):
         return numerator / denominator if denominator else 0.0
 
     return {
-        "seed": args.seed,
-        "num_episodes": args.num_episodes,
+        "seed": seed,
+        "num_episodes": num_episodes,
         "agent_wins": agent_wins,
         "opponent_wins": opponent_wins,
         "draws": draws,
         "agent_win_rate": safe_divide(
             agent_wins,
-            args.num_episodes,
+            num_episodes,
         ),
         "opponent_win_rate": safe_divide(
             opponent_wins,
-            args.num_episodes,
+            num_episodes,
         ),
         "draw_rate": safe_divide(
             draws,
-            args.num_episodes,
+            num_episodes,
         ),
         "agent_first_games": agent_first,
         "agent_second_games": agent_second,
@@ -127,16 +127,16 @@ def evaluate_agent(env, args, agent, opponent=None):
         ),
         "average_reward": safe_divide(
             total_reward,
-            args.num_episodes,
+            num_episodes,
         ),
         "average_game_length": safe_divide(
             total_steps,
-            args.num_episodes,
+            num_episodes,
         ),
         "illegal_moves": illegal_moves,
         "illegal_moves_per_episode": safe_divide(
             illegal_moves,
-            args.num_episodes,
+            num_episodes,
         ),
         "illegal_action_rate": safe_divide(
             illegal_moves,
@@ -159,9 +159,10 @@ def main():
     try:
         results = evaluate_agent(
             env=env,
-            args=args,
             agent=agent,
             opponent=opponent,
+            num_episodes=args.num_episodes,
+            seed=args.seed,
         )
     finally:
         env.close()

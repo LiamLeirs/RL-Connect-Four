@@ -1,7 +1,9 @@
 import gymnasium as gym
 import numpy as np
 from src.envs.connect_four.game import ConnectFour, MoveResult
-from src.agents.opponents import RandomOpponent, HumanOpponent
+from src.agents.opponents import RandomOpponent, HumanOpponent, ModelOpponent
+import torch
+from sb3_contrib import MaskablePPO
 
 class ConnectFourEnv(gym.Env):
     metadata = {
@@ -111,6 +113,8 @@ class ConnectFourEnv(gym.Env):
         return self.game.get_legal_moves().copy()
 
     def reset(self,*, seed=None, options=None):
+        if self.render_mode == "human":
+            self._ensure_renderer()
         super().reset(seed=seed)
         self.game.reset()
         result = None
@@ -223,15 +227,15 @@ class ConnectFourEnv(gym.Env):
             self.renderer = None
 
 if __name__ == "__main__":
-    from gymnasium.wrappers import RecordVideo
     opponent = HumanOpponent(renderer=None, game=None)
+    agent = ModelOpponent(model=MaskablePPO.load("models/ppo_random/final_model"), deterministic=True)
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
     obs, info = env.reset()
     terminated = False
 
     while not terminated:
         legal = np.flatnonzero(info["action_mask"])
-        action = int(env.np_random.choice(legal))
+        action = agent.select_action(obs, info["action_mask"])
 
         obs, reward, terminated, truncated, info = env.step(action)
     env.close()

@@ -41,3 +41,12 @@ class HumanOpponent(Opponent):
 
             if action_mask[column]:
                 return column
+
+class ModelOpponent(Opponent):
+    def __init__(self, model, deterministic=True):
+        self.model = model
+        self.deterministic = deterministic
+
+    def select_action(self, observation, action_mask, rng=np.random):
+        action, _ = self.model.predict(observation, action_masks=action_mask, deterministic=self.deterministic)
+        return int(action)
