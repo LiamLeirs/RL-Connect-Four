@@ -24,10 +24,7 @@ class ConnectFourEnv(gym.Env):
 
         self.opponent_provider = opponent_provider
         self.fixed_opponent = opponent or RandomAgent()
-        self.current_opponent = None
-
-        self._attach_opponent()
-        
+        self.current_opponent = None        
 
     def _ensure_renderer(self):
         if self.renderer is None:
@@ -127,6 +124,7 @@ class ConnectFourEnv(gym.Env):
         else:
             opponent = self.fixed_opponent
         self.current_opponent = opponent
+        self._attach_opponent()
 
         self.current_opponent.on_episode_start(self.np_random)
 
@@ -148,7 +146,7 @@ class ConnectFourEnv(gym.Env):
 
         if self.render_mode == "human":
             self.render()
-            
+
         return self._get_observation_for(self.agent_player), self._get_info(result)
 
     def _reward_from_winner(self, winner: int | None) -> float:
