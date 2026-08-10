@@ -24,14 +24,14 @@ class SelfPlayManager:
     def add_player(self, name, player, timestep):
         self.pool.append(PlayerEntry(name=name, player=player, timestep=timestep, kind="checkpoint"))
 
-    def sample_player(self):
+    def sample_player(self, rng=np.random):
         if len(self.pool) == 0:
-            return np.random.choice(self.anchors)
-        prob = np.random.uniform(0, 1)
+            return rng.choice(self.anchors)
+        prob = rng.uniform(0, 1)
         if prob < self.anchor_weight:
-            return np.random.choice(self.anchors)
+            return rng.choice(self.anchors)
         else:
-            return np.random.choice(self.pool[-self.window_size:])
+            return rng.choice(self.pool[-self.window_size:])
 
     def update_weights(self, timestep):
         pass

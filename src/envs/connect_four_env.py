@@ -11,7 +11,7 @@ class ConnectFourEnv(gym.Env):
         "render_modes": ["human", "rgb_array"],
         "render_fps": 60,
     }
-    def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=None, render_mode=None):
+    def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=None, opponent_provider=None, render_mode=None):
         super().__init__()
         if render_mode not in {None, "human", "rgb_array"}:
             raise ValueError(f"Unsupported render mode: {render_mode}")
@@ -22,7 +22,10 @@ class ConnectFourEnv(gym.Env):
         self.render_mode = render_mode
         self.renderer = None
 
-        self.opponent = opponent
+        self.opponent_provider = opponent_provider
+        self.fixed_opponent = opponent or RandomAgent()
+        self.current_opponent = None
+
         self._attach_opponent()
         
 
@@ -111,24 +114,41 @@ class ConnectFourEnv(gym.Env):
         return self.game.get_legal_moves().copy()
 
     def reset(self,*, seed=None, options=None):
+        super().reset(seed=seed)
+
         if self.render_mode == "human":
             self._ensure_renderer()
-        super().reset(seed=seed)
+
         self.game.reset()
-        self.opponent.on_episode_start(self.np_random)
-        result = None
+
+        # Choose opponent for this episode
+        if self.opponent_provider is not None:
+            opponent = self.opponent_provider.sample_player(self.np_random)
+        else:
+            opponent = self.fixed_opponent
+        self.current_opponent = opponent
+
+        self.current_opponent.on_episode_start(self.np_random)
+
+        # Randomize sides
         if self.np_random.random() < 0.5:
             self.agent_player = 1
             self.opponent_player = -1
         else:
             self.agent_player = -1
             self.opponent_player = 1
+
+        result = None
+
+        # If opponent is first player, make opponent move
         if self.agent_player == -1:
             opponent_action = self._choose_opponent_action()
             result = self.game.make_move(opponent_action)
             self._animate_move(result)
+
         if self.render_mode == "human":
             self.render()
+            
         return self._get_observation_for(self.agent_player), self._get_info(result)
 
     def _reward_from_winner(self, winner: int | None) -> float:
@@ -141,7 +161,7 @@ class ConnectFourEnv(gym.Env):
         return -1.0
 
     def set_opponent(self, opponent):
-        self.opponent = opponent
+        self.current_opponent = opponent
         self._attach_opponent()
 
     def _attach_opponent(self) -> None:
@@ -151,14 +171,14 @@ class ConnectFourEnv(gym.Env):
             self._ensure_renderer()
             renderer = self.renderer
 
-        if self.opponent is not None:
-            self.opponent.attach(
+        if self.current_opponent is not None:
+            self.current_opponent.attach(
                 game=self.game,
                 renderer=renderer,
             )
 
     def _choose_opponent_action(self) -> int:
-        return self.opponent.select_action(self._get_observation_for(self.opponent_player), self.action_masks(), self.np_random)
+        return self.current_opponent.select_action(self._get_observation_for(self.opponent_player), self.action_masks(), self.np_random)
 
     @property
     def agent_turn(self) -> bool:
