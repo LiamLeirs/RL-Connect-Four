@@ -22,7 +22,7 @@ class ConnectFourEnv(gym.Env):
         self.render_mode = render_mode
         self.renderer = None
 
-        self.opponent = opponent or RandomAgent()
+        self.opponent = opponent
         self._attach_opponent()
         
 
@@ -151,10 +151,11 @@ class ConnectFourEnv(gym.Env):
             self._ensure_renderer()
             renderer = self.renderer
 
-        self.opponent.attach(
-            game=self.game,
-            renderer=renderer,
-        )
+        if self.opponent is not None:
+            self.opponent.attach(
+                game=self.game,
+                renderer=renderer,
+            )
 
     def _choose_opponent_action(self) -> int:
         return self.opponent.select_action(self._get_observation_for(self.opponent_player), self.action_masks(), self.np_random)
