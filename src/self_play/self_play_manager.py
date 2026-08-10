@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from src.agents.agents import *
+from sb3_contrib import MaskablePPO
 import numpy as np
 
 @dataclass
@@ -21,7 +22,8 @@ class SelfPlayManager:
         self.window_size = window_size
         self.num_timesteps = num_timesteps
 
-    def add_player(self, name, player, timestep):
+    def add_checkpoint(self, name, model_path, timestep):
+        player = ModelAgent(model=MaskablePPO.load(model_path), deterministic=True)
         self.pool.append(PlayerEntry(name=name, player=player, timestep=timestep, kind="checkpoint"))
 
     def sample_opponent(self, rng=np.random):
