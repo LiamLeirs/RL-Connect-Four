@@ -24,7 +24,7 @@ class SelfPlayManager:
     def add_player(self, name, player, timestep):
         self.pool.append(PlayerEntry(name=name, player=player, timestep=timestep, kind="checkpoint"))
 
-    def sample_player(self, rng=np.random):
+    def sample_opponent(self, rng=np.random):
         if len(self.pool) == 0:
             return rng.choice(self.anchors)
         prob = rng.uniform(0, 1)

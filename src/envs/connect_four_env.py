@@ -49,12 +49,13 @@ class ConnectFourEnv(gym.Env):
         )
 
         while self.renderer.is_animating:
-            running = self.renderer.update()
+            event = self.renderer.update()
 
-            if not running:
+            if event == RendererEvent.QUIT:
                 self.close()
                 raise KeyboardInterrupt("Pygame window closed.")
-
+            elif event == RendererEvent.RESET:
+                self.reset()
             self.renderer.draw_human(
                 board=self.game.get_board(),
                 current_player=self.game.get_current_player(),
@@ -120,7 +121,7 @@ class ConnectFourEnv(gym.Env):
 
         # Choose opponent for this episode
         if self.opponent_provider is not None:
-            opponent = self.opponent_provider.sample_player(self.np_random)
+            opponent = self.opponent_provider.sample_opponent(self.np_random)
         else:
             opponent = self.fixed_opponent
         self.current_opponent = opponent
