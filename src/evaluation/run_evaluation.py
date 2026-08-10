@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--agent-model-path",
         type=Path,
-        default=Path("models/ppo_random/final_model"),
+        default=Path("models/ppo_selfplay/final_model"),
         help="Model path when --agent is ppo.",
     )
 

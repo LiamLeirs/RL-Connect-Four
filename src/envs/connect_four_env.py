@@ -133,9 +133,11 @@ class ConnectFourEnv(gym.Env):
         if self.np_random.random() < 0.5:
             self.agent_player = 1
             self.opponent_player = -1
+            print("Agent is first player")
         else:
             self.agent_player = -1
             self.opponent_player = 1
+            print("Agent is second player")
 
         result = None
 
@@ -259,9 +261,9 @@ class ConnectFourEnv(gym.Env):
             self.renderer = None
 
 if __name__ == "__main__":
-    opponent = HumanAgent()
+    opponent = TacticalAgent()
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
-    agent = ModelAgent(model=MaskablePPO.load("models/ppo_random/final_model"), deterministic=True)
+    agent = ModelAgent(model=MaskablePPO.load("models/ppo_selfplay/final_model"), deterministic=True)
     obs, info = env.reset()
     terminated = False
     running = True

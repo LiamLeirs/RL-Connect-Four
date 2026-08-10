@@ -7,6 +7,7 @@ from sb3_contrib import MaskablePPO
 from src.agents.agents import ModelAgent, RandomAgent
 from src.envs.connect_four_env import ConnectFourEnv
 from src.evaluation.evaluator import evaluate_agent
+from src.self_play.self_play_manager import SelfPlayManager, SelfPlayCallback
 
 
 def parse_args():
@@ -18,7 +19,7 @@ def parse_args():
     parser.add_argument(
         "--total-timesteps",
         type=int,
-        default=250_000,
+        default=300_000,
     )
 
     parser.add_argument(
@@ -36,7 +37,7 @@ def parse_args():
     parser.add_argument(
         "--model-path",
         type=Path,
-        default=Path("models/ppo_random/final_model"),
+        default=Path("models/ppo_selfplay/final_model"),
     )
 
     parser.add_argument(
@@ -70,8 +71,10 @@ def main():
         exist_ok=True,
     )
 
+    manager = SelfPlayManager()
+
     train_env = ConnectFourEnv(
-        opponent=RandomAgent(),
+        opponent_provider=manager,
         render_mode=None,
     )
 
@@ -101,6 +104,7 @@ def main():
             total_timesteps=args.total_timesteps,
             progress_bar=True,
             tb_log_name="maskable_ppo_random",
+            callback=SelfPlayCallback(manager=manager, checkpoint_freq=50_000, checkpoint_dir="models/ppo_selfplay/checkpoints"),
         )
 
         model.save(args.model_path)
