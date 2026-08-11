@@ -142,7 +142,7 @@ class MiniMaxAgent(Agent):
         self.renderer = renderer
         self.window_rows, self.window_cols = self._generate_windows()
     
-    def minimax(self, game, depth, maximizingPlayer, agentPlayer):
+    def minimax(self, game, depth, maximizingPlayer, agentPlayer, alpha=-float("inf"), beta=float("inf")):
         winner = game.get_winner()
 
         # Return score based on depth to encourage faster wins / slower losses
@@ -163,16 +163,22 @@ class MiniMaxAgent(Agent):
             for action in legal_actions:
                 simulatedGame = copy.deepcopy(game)
                 simulatedGame.make_move(action)
-                score = self.minimax(simulatedGame, depth - 1, False, agentPlayer)
+                score = self.minimax(simulatedGame, depth - 1, False, agentPlayer, alpha, beta)
                 bestScore = max(bestScore, score)
+                alpha = max(alpha, bestScore)
+                if alpha >= beta:
+                    break
             return bestScore
         else:
             bestScore = float("inf")
             for action in legal_actions:
                 simulatedGame = copy.deepcopy(game)
                 simulatedGame.make_move(action)
-                score = self.minimax(simulatedGame, depth - 1, True, agentPlayer)
+                score = self.minimax(simulatedGame, depth - 1, True, agentPlayer, alpha, beta)
                 bestScore = min(bestScore, score)
+                beta = min(beta, bestScore)
+                if alpha >= beta:
+                    break
             return bestScore
 
     def select_action(self, observation, action_mask, rng=np.random):
@@ -180,15 +186,18 @@ class MiniMaxAgent(Agent):
         best_score = -float("inf")
         legal_actions = np.flatnonzero(action_mask)
         agent_player = self.game.get_current_player()
+        alpha = -float("inf")
+        beta = float("inf")
         for action in legal_actions:
             simulated_game = copy.deepcopy(self.game)
             simulated_game.make_move(action)
-            score = self.minimax(simulated_game, self.depth-1, False, agent_player)
+            score = self.minimax(simulated_game, self.depth-1, False, agent_player, alpha, beta)
             if score > best_score:
                 best_score = score
                 best_actions = [action]
             elif score == best_score:
                 best_actions.append(action)
+            alpha = max(alpha, best_score)
         return int(rng.choice(best_actions))
 
     def _generate_windows(self):
