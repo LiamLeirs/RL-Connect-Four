@@ -263,7 +263,7 @@ class ConnectFourEnv(gym.Env):
 if __name__ == "__main__":
     opponent = HumanAgent()
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
-    agent = MiniMaxAgent(depth=4)
+    agent = MiniMaxAgent(game=env.game, renderer=env.renderer, depth=4)
     obs, info = env.reset()
     terminated = False
     running = True

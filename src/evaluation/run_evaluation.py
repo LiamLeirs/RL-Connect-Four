@@ -12,6 +12,7 @@ from src.agents.agents import (
     ModelAgent,
     RandomAgent,
     TacticalAgent,
+    MiniMaxAgent,
 )
 from src.envs.connect_four_env import ConnectFourEnv
 from src.evaluation.evaluator import evaluate_agent
@@ -20,6 +21,7 @@ from src.evaluation.evaluator import evaluate_agent
 SUPPORTED_AGENT_TYPES = (
     "random",
     "tactical",
+    "minimax",
     "ppo",
 )
 
@@ -39,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--opponent",
         choices=SUPPORTED_AGENT_TYPES,
-        default="tactical",
+        default="minimax",
         help="Agent used as the opponent.",
     )
 
@@ -107,6 +109,9 @@ def create_agent(
 
     if agent_type == "tactical":
         return TacticalAgent()
+
+    if agent_type == "minimax":
+        return MiniMaxAgent(depth=2)
 
     if agent_type == "ppo":
         resolved_path = resolve_model_path(model_path)

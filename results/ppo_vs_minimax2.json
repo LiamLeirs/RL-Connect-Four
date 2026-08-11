@@ -1,0 +1,25 @@
+{
+    "seed": 0,
+    "num_episodes": 1000,
+    "agent_wins": 12,
+    "opponent_wins": 975,
+    "draws": 13,
+    "agent_win_rate": 0.012,
+    "opponent_win_rate": 0.975,
+    "draw_rate": 0.013,
+    "agent_first_games": 484,
+    "agent_second_games": 516,
+    "agent_first_win_rate": 0.0,
+    "agent_second_win_rate": 0.023255813953488372,
+    "average_reward": -0.963,
+    "average_game_length": 7.754,
+    "illegal_moves": 0,
+    "illegal_moves_per_episode": 0.0,
+    "illegal_action_rate": 0.0,
+    "evaluation": {
+        "agent_type": "ppo",
+        "opponent_type": "minimax",
+        "agent_model_path": "models\\ppo_selfplay\\final_model",
+        "opponent_model_path": null
+    }
+}

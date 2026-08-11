@@ -12,6 +12,8 @@ class PlayerEntry:
     agent: Agent
     timestep: int
     kind: str = "checkpoint"
+    elo: float = 1000
+    games_played: int = 0
 
 class SelfPlayCallback(BaseCallback):
     def __init__(self, manager, checkpoint_freq, checkpoint_dir, verbose=0):
@@ -47,17 +49,16 @@ class SelfPlayCallback(BaseCallback):
         return True
     
 class SelfPlayManager:
-    def __init__(self, window_size=8, anchor_weight=0.5):
-        self.pool: list[PlayerEntry] = []
-        self.anchors: list[PlayerEntry] = []
-        self.anchors.append(PlayerEntry(name="Random", agent=RandomAgent(), timestep=0, kind="baseline"))
-        self.anchors.append(PlayerEntry(name="Tactical", agent=TacticalAgent(), timestep=0, kind="baseline"))
-        self.anchor_weight = anchor_weight
+    def __init__(self, window_size=8):
+        self.league = list[PlayerEntry]()
+        self.league.append(PlayerEntry(name="Random", agent=RandomAgent(), timestep=0, kind="baseline"))
+        self.league.append(PlayerEntry(name="Tactical", agent=TacticalAgent(), timestep=0, kind="baseline"))
         self.window_size = window_size
+        self.learner_elo = 1000
 
     def add_checkpoint(self, name, model_path, timestep):
         agent = ModelAgent(model=MaskablePPO.load(model_path), deterministic=True)
-        self.pool.append(PlayerEntry(name=name, agent=agent, timestep=timestep, kind="checkpoint"))
+        self.league.append(PlayerEntry(name=name, agent=agent, timestep=timestep, kind="checkpoint", elo=self.learner_elo))
 
     def sample_opponent(self, rng=np.random):
         if len(self.pool) == 0:
