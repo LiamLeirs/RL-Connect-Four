@@ -57,7 +57,7 @@ class SelfPlayCallback(BaseCallback):
 
         learner_agent = ModelAgent(
             model=frozen_model,
-            deterministic=True,
+            deterministic=False,
         )
 
         opponent_entries = self.manager.sample_evaluation_league(
@@ -160,7 +160,7 @@ class SelfPlayManager:
                 name=name,
                 agent_factory=lambda model=model: ModelAgent(
                     model=model,
-                    deterministic=True,
+                    deterministic=False,
                 ),
                 timestep=timestep,
                 kind="checkpoint",
