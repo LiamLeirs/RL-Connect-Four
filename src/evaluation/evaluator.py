@@ -1,6 +1,6 @@
 from src.agents.agents import RandomAgent
 
-def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
+def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0, get_elo_scores=False):
     if opponent is None:
         opponent = RandomAgent()
 
@@ -18,6 +18,8 @@ def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
     illegal_moves = 0
     total_reward = 0.0
     total_steps = 0
+
+    elo_scores = []
 
     for episode in range(num_episodes):
         observation, info = env.reset(
@@ -61,8 +63,11 @@ def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
 
         if winner == 0:
             draws += 1
+            elo_scores.append(0.5)
+            
         elif winner == agent_player:
             agent_wins += 1
+            elo_scores.append(1)
 
             if agent_player == 1:
                 agent_first_wins += 1
@@ -70,6 +75,7 @@ def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
                 agent_second_wins += 1
         else:
             opponent_wins += 1
+            elo_scores.append(0)
 
         total_reward += episode_reward
         total_steps += episode_steps
@@ -77,6 +83,9 @@ def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0):
     def safe_divide(numerator, denominator):
         return numerator / denominator if denominator else 0.0
 
+    if get_elo_scores:
+        return elo_scores
+    
     return {
         "seed": seed,
         "num_episodes": num_episodes,
