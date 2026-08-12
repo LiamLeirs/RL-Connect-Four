@@ -187,7 +187,6 @@ def main() -> None:
         results = evaluate_agent(
             env=env,
             agent=evaluated_agent,
-            opponent=opponent,
             num_episodes=args.num_episodes,
             seed=args.seed,
         )

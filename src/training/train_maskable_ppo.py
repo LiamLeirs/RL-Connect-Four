@@ -65,10 +65,10 @@ def parse_args():
     )
 
     parser.add_argument(
-            "--K",
-            type=float,
-            default=8,
-        )
+        "--K",
+        type=float,
+        default=8,
+    )
 
     parser.add_argument(
         "--model-path",
@@ -128,7 +128,6 @@ def evaluate_final_model(
             results[name] = evaluate_agent(
                 env=env,
                 agent=agent,
-                opponent=opponent,
                 num_episodes=num_episodes,
                 seed=seed + index * 10_000,
             )
@@ -164,7 +163,7 @@ def main():
     manager = SelfPlayManager(
         window_size=args.window_size,
         temperature=args.temperature,
-        K = args.K
+        K=args.K
     )
 
     train_env = ConnectFourEnv(
