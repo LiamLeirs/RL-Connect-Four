@@ -49,7 +49,13 @@ def parse_args():
     parser.add_argument(
         "--checkpoint-freq",
         type=int,
-        default=25_000,
+        default=50_000,
+    )
+
+    parser.add_argument(
+        "--rating-freq",
+        type=int,
+        default=10_000,
     )
 
     parser.add_argument(
@@ -196,6 +202,7 @@ def main():
         manager=manager,
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_dir=args.checkpoint_dir,
+        rating_freq=args.rating_freq,
     )
 
     try:

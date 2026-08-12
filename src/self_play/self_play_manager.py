@@ -29,45 +29,104 @@ class PlayerEntry:
 
 
 class SelfPlayCallback(BaseCallback):
-    def __init__(self, manager, checkpoint_freq, checkpoint_dir, verbose=0):
+    def __init__(
+        self,
+        manager,
+        checkpoint_freq,
+        rating_freq,
+        checkpoint_dir,
+        verbose=0,
+    ):
         super().__init__(verbose=verbose)
 
         self.manager: SelfPlayManager = manager
         self.checkpoint_freq = checkpoint_freq
+        self.rating_freq = rating_freq
         self.checkpoint_dir = Path(checkpoint_dir)
         self.next_checkpoint = checkpoint_freq
+        self.next_rating = rating_freq
 
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-    def _on_step(self) -> bool:
-        if self.num_timesteps < self.next_checkpoint:
-            return True
-
-        timestep = self.num_timesteps
-        save_path = self.checkpoint_dir / f"checkpoint_{timestep}.zip"
-
-        logger.info(
-            f"Checkpoint evaluation | timestep={timestep} | "
-            f"learner_elo={self.manager.learner_elo:.1f}"
+        self.checkpoint_dir.mkdir(
+            parents=True,
+            exist_ok=True,
         )
 
-        # Freeze the current learner.
+    def save_checkpoint(self):
+        timestep = self.num_timesteps
+
+        logger.info(
+            f"Saving checkpoint | "
+            f"timestep={timestep} | "
+            f"elo={self.manager.learner_elo:.1f}"
+        )
+
+        save_path = (
+            self.checkpoint_dir
+            / f"checkpoint_{timestep}.zip"
+        )
         self.model.save(save_path)
         frozen_model = MaskablePPO.load(save_path)
+        self.manager.add_checkpoint(
+            name=f"PPO_{timestep}",
+            model=frozen_model,
+            timestep=timestep
+        )
+
+        logger.info(
+            f"Checkpoint saved | "
+            f"name=PPO_{timestep} | "
+            f"league_size={len(self.manager.league)}"
+        )
+
+    def _on_step(self) -> bool:
+        timestep = self.num_timesteps
+
+        rating_due = timestep >= self.next_rating
+        checkpoint_due = timestep >= self.next_checkpoint
+
+        # A checkpoint always gets a fresh rating first.
+        if rating_due or checkpoint_due:
+            self.run_rating_period()
+
+        if rating_due:
+            while self.next_rating <= timestep:
+                self.next_rating += self.rating_freq
+
+        if checkpoint_due:
+            self.save_checkpoint()
+
+            while self.next_checkpoint <= timestep:
+                self.next_checkpoint += self.checkpoint_freq
+
+        return True
+
+    def run_rating_period(self):
+        timestep = self.num_timesteps
+
+        # Freeze the learner Elo for this entire rating period.
+        learner_elo_before = self.manager.learner_elo
+
+        logger.info(
+            f"Rating period | "
+            f"timestep={timestep} | "
+            f"learner_elo={learner_elo_before:.1f}"
+        )
 
         learner_agent = ModelAgent(
-            model=frozen_model,
+            model=self.model,
             deterministic=False,
         )
 
-        opponent_entries = self.manager.sample_evaluation_league(
-            num_opponents=4
+        opponent_entries = (
+            self.manager.sample_evaluation_league(
+                num_opponents=4,
+            )
         )
 
         num_eval_games = 100
+        rating_results = []
 
         for i, opponent_entry in enumerate(opponent_entries):
-            # Evaluation gets a fresh opponent instance.
             evaluation_opponent = opponent_entry.create_agent()
 
             env = ConnectFourEnv(
@@ -75,53 +134,79 @@ class SelfPlayCallback(BaseCallback):
                 render_mode=None,
             )
 
-            learner_elo_before = self.manager.learner_elo
-            opponent_elo_before = opponent_entry.elo
-
             try:
                 elo_scores = evaluate_agent(
                     env=env,
                     agent=learner_agent,
                     num_episodes=num_eval_games,
                     get_elo_scores=True,
-                    seed=self.num_timesteps+i*10_000
+                    seed=timestep + i * 10_000,
                 )
             finally:
                 env.close()
 
-            wins = sum(score == 1.0 for score in elo_scores)
-            draws = sum(score == 0.5 for score in elo_scores)
-            losses = sum(score == 0.0 for score in elo_scores)
+            # Match statistics from the learner's perspective.
+            wins = sum(
+                score == 1.0
+                for score in elo_scores
+            )
+            draws = sum(
+                score == 0.5
+                for score in elo_scores
+            )
+            losses = sum(
+                score == 0.0
+                for score in elo_scores
+            )
 
-            self.manager.update_elo(
+            self.manager.record_results(
                 opponent_entry,
                 elo_scores,
             )
 
+            # Calculate but DO NOT apply the Elo change yet.
+            elo_delta = self.manager.calculate_elo_delta(
+                learner_elo=learner_elo_before,
+                opponent_elo=opponent_entry.elo,
+                results=elo_scores,
+            )
+
+            rating_results.append(elo_delta)
+
             logger.info(
                 f"vs {opponent_entry.name:<12} | "
                 f"W/D/L={wins}/{draws}/{losses} | "
-                f"opponent_elo={opponent_elo_before:.1f}"
-                f"->{opponent_entry.elo:.1f} | "
-                f"learner_elo={learner_elo_before:.1f}"
-                f"->{self.manager.learner_elo:.1f}"
+                f"opponent_elo={opponent_entry.elo:.1f} | "
+                f"proposed_delta={elo_delta:+.1f}"
             )
 
-        self.manager.add_checkpoint(
-            name=f"PPO_{timestep}",
-            model=frozen_model,
-            timestep=timestep,
+        # Apply all Elo changes only after every matchup has
+        # been evaluated, removing opponent-order dependence.
+        total_delta = sum(rating_results)
+
+        self.manager.learner_elo = (
+            learner_elo_before + total_delta
+        )
+
+        for opponent_entry, elo_delta in zip(
+            opponent_entries,
+            rating_results,
+        ):
+            opponent_entry.elo -= elo_delta
+
+        logger.info(
+            f"Rating period complete | "
+            f"learner_elo={learner_elo_before:.1f}"
+            f"->{self.manager.learner_elo:.1f} | "
+            f"delta={total_delta:+.1f}"
         )
 
         logger.info(
-            f"Checkpoint complete | timestep={timestep} | "
+            f"Rating period complete | "
+            f"timestep={timestep} | "
             f"elo={self.manager.learner_elo:.1f} | "
             f"league_size={len(self.manager.league)}"
         )
-
-        self.next_checkpoint += self.checkpoint_freq
-
-        return True
 
 
 class SelfPlayManager:
@@ -164,7 +249,7 @@ class SelfPlayManager:
                 ),
                 timestep=timestep,
                 kind="checkpoint",
-                elo=self.learner_elo,
+                elo=self.learner_elo
             )
         )
 
@@ -173,42 +258,41 @@ class SelfPlayManager:
             1 + 10 ** ((opponent_elo - learner_elo) / 400)
         )
 
-    def update_elo(self, opponent_entry, results):
-        learner_elo = self.learner_elo
+    def calculate_elo_delta(self, learner_elo, opponent_elo, results):
+        initial_learner_elo = learner_elo
+
+        temp_learner_elo = learner_elo
+        temp_opponent_elo = opponent_elo
 
         for elo_score in results:
             expected_learner = self.expected_score(
-                learner_elo,
-                opponent_entry.elo,
+                temp_learner_elo,
+                temp_opponent_elo,
             )
 
-            expected_opponent = 1 - expected_learner
-
-            new_learner_elo = learner_elo + self.K * (
+            delta = self.K * (
                 elo_score - expected_learner
             )
 
-            new_opponent_elo = opponent_entry.elo + self.K * (
-                (1 - elo_score) - expected_opponent
-            )
+            temp_learner_elo += delta
+            temp_opponent_elo -= delta
 
-            learner_elo = new_learner_elo
-            opponent_entry.elo = new_opponent_elo
+        return temp_learner_elo - initial_learner_elo
 
-            if elo_score == 1.0:
+    def record_results(self, opponent_entry, results):
+        for score in results:
+            if score == 1.0:
                 opponent_entry.losses += 1
-            elif elo_score == 0.0:
+            elif score == 0.0:
                 opponent_entry.wins += 1
-            elif elo_score == 0.5:
+            elif score == 0.5:
                 opponent_entry.draws += 1
             else:
                 raise ValueError(
-                    f"Invalid Elo score: {elo_score}"
+                    f"Invalid Elo score: {score}"
                 )
 
             opponent_entry.games_played += 1
-
-        self.learner_elo = learner_elo
 
     def sample_evaluation_league(self, num_opponents=4):
         num_opponents = min(
