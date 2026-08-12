@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 from loguru import logger
@@ -14,7 +15,7 @@ from src.envs.connect_four_env import ConnectFourEnv
 @dataclass
 class PlayerEntry:
     name: str
-    agent: Agent
+    agent_factory: Callable[[], Agent]
     timestep: int | None = None
     kind: str = "checkpoint"
     elo: float = 1200
@@ -23,10 +24,14 @@ class PlayerEntry:
     losses: int = 0
     draws: int = 0
 
+    def create_agent(self) -> Agent:
+        return self.agent_factory()
+
 
 class SelfPlayCallback(BaseCallback):
     def __init__(self, manager, checkpoint_freq, checkpoint_dir, verbose=0):
         super().__init__(verbose=verbose)
+
         self.manager: SelfPlayManager = manager
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_dir = Path(checkpoint_dir)
@@ -46,51 +51,65 @@ class SelfPlayCallback(BaseCallback):
             f"learner_elo={self.manager.learner_elo:.1f}"
         )
 
-        # Save a frozen version of the current learner
+        # Freeze the current learner.
         self.model.save(save_path)
-        agent = ModelAgent(
-            model=MaskablePPO.load(save_path),
+        frozen_model = MaskablePPO.load(save_path)
+
+        learner_agent = ModelAgent(
+            model=frozen_model,
             deterministic=True,
         )
 
-        opponent_entries = self.manager.sample_evaluation_league(num_opponents=4)
+        opponent_entries = self.manager.sample_evaluation_league(
+            num_opponents=4
+        )
+
         num_eval_games = 100
 
-        env = ConnectFourEnv()
+        for opponent_entry in opponent_entries:
+            # IMPORTANT:
+            # Evaluation gets a fresh opponent instance.
+            evaluation_opponent = opponent_entry.create_agent()
 
-        try:
-            for opponent_entry in opponent_entries:
-                learner_elo_before = self.manager.learner_elo
-                opponent_elo_before = opponent_entry.elo
+            env = ConnectFourEnv(
+                opponent=evaluation_opponent,
+                render_mode=None,
+            )
 
+            learner_elo_before = self.manager.learner_elo
+            opponent_elo_before = opponent_entry.elo
+
+            try:
                 elo_scores = evaluate_agent(
-                    env,
-                    agent,
-                    opponent_entry.agent,
+                    env=env,
+                    agent=learner_agent,
                     num_episodes=num_eval_games,
                     get_elo_scores=True,
                 )
+            finally:
+                env.close()
 
-                wins = sum(score == 1.0 for score in elo_scores)
-                draws = sum(score == 0.5 for score in elo_scores)
-                losses = sum(score == 0.0 for score in elo_scores)
+            wins = sum(score == 1.0 for score in elo_scores)
+            draws = sum(score == 0.5 for score in elo_scores)
+            losses = sum(score == 0.0 for score in elo_scores)
 
-                self.manager.update_elo(opponent_entry, elo_scores)
+            self.manager.update_elo(
+                opponent_entry,
+                elo_scores,
+            )
 
-                logger.info(
-                    f"vs {opponent_entry.name:<12} | "
-                    f"W/D/L={wins}/{draws}/{losses} | "
-                    f"opponent_elo={opponent_elo_before:.1f}"
-                    f"->{opponent_entry.elo:.1f} | "
-                    f"learner_elo={learner_elo_before:.1f}"
-                    f"->{self.manager.learner_elo:.1f}"
-                )
-        finally:
-            env.close()
+            logger.info(
+                f"vs {opponent_entry.name:<12} | "
+                f"W/D/L={wins}/{draws}/{losses} | "
+                f"opponent_elo={opponent_elo_before:.1f}"
+                f"->{opponent_entry.elo:.1f} | "
+                f"learner_elo={learner_elo_before:.1f}"
+                f"->{self.manager.learner_elo:.1f}"
+            )
 
         self.manager.add_checkpoint(
             name=f"PPO_{timestep}",
-            agent=agent,
+            model=frozen_model,
             timestep=timestep,
         )
 
@@ -110,22 +129,22 @@ class SelfPlayManager:
         self.league = [
             PlayerEntry(
                 name="Random",
-                agent=RandomAgent(),
+                agent_factory=RandomAgent,
                 kind="baseline",
             ),
             PlayerEntry(
                 name="Tactical",
-                agent=TacticalAgent(),
+                agent_factory=TacticalAgent,
                 kind="baseline",
             ),
             PlayerEntry(
                 name="MiniMax2",
-                agent=MiniMaxAgent(depth=2),
+                agent_factory=lambda: MiniMaxAgent(depth=2),
                 kind="baseline",
             ),
             PlayerEntry(
                 name="MiniMax4",
-                agent=MiniMaxAgent(depth=4),
+                agent_factory=lambda: MiniMaxAgent(depth=4),
                 kind="baseline",
             ),
         ]
@@ -134,11 +153,14 @@ class SelfPlayManager:
         self.learner_elo = 1200
         self.temperature = temperature
 
-    def add_checkpoint(self, name, agent, timestep):
+    def add_checkpoint(self, name, model, timestep):
         self.league.append(
             PlayerEntry(
                 name=name,
-                agent=agent,
+                agent_factory=lambda model=model: ModelAgent(
+                    model=model,
+                    deterministic=True,
+                ),
                 timestep=timestep,
                 kind="checkpoint",
                 elo=self.learner_elo,
@@ -146,7 +168,9 @@ class SelfPlayManager:
         )
 
     def expected_score(self, learner_elo, opponent_elo):
-        return 1 / (1 + 10 ** ((opponent_elo - learner_elo) / 400))
+        return 1 / (
+            1 + 10 ** ((opponent_elo - learner_elo) / 400)
+        )
 
     def update_elo(self, opponent_entry, results, K=32):
         learner_elo = self.learner_elo
@@ -156,11 +180,13 @@ class SelfPlayManager:
                 learner_elo,
                 opponent_entry.elo,
             )
+
             expected_opponent = 1 - expected_learner
 
             new_learner_elo = learner_elo + K * (
                 elo_score - expected_learner
             )
+
             new_opponent_elo = opponent_entry.elo + K * (
                 (1 - elo_score) - expected_opponent
             )
@@ -175,15 +201,24 @@ class SelfPlayManager:
             elif elo_score == 0.5:
                 opponent_entry.draws += 1
             else:
-                raise ValueError(f"Invalid Elo score: {elo_score}")
+                raise ValueError(
+                    f"Invalid Elo score: {elo_score}"
+                )
 
             opponent_entry.games_played += 1
 
         self.learner_elo = learner_elo
 
     def sample_evaluation_league(self, num_opponents=4):
-        num_opponents = min(num_opponents, len(self.league))
-        sorted_league = sorted(self.league, key=lambda entry: entry.elo)
+        num_opponents = min(
+            num_opponents,
+            len(self.league),
+        )
+
+        sorted_league = sorted(
+            self.league,
+            key=lambda entry: entry.elo,
+        )
 
         league_lte = []
         league_gt = []
@@ -205,21 +240,27 @@ class SelfPlayManager:
 
         if remaining > 0:
             unused = below[half:] + above[half:]
+
             unused.sort(
-                key=lambda entry: abs(entry.elo - self.learner_elo)
+                key=lambda entry: abs(
+                    entry.elo - self.learner_elo
+                )
             )
+
             eval_entries += unused[:remaining]
 
         return eval_entries
 
     def sample_opponent(self, rng=np.random):
         baselines = [
-            entry for entry in self.league
+            entry
+            for entry in self.league
             if entry.kind == "baseline"
         ]
 
         checkpoints = [
-            entry for entry in self.league
+            entry
+            for entry in self.league
             if entry.kind == "checkpoint"
         ]
 
@@ -228,7 +269,10 @@ class SelfPlayManager:
             key=lambda entry: entry.timestep,
         )
 
-        eligible_entries = checkpoints[-self.window_size:] + baselines
+        eligible_entries = (
+            checkpoints[-self.window_size:]
+            + baselines
+        )
 
         distances = np.array(
             [
@@ -238,9 +282,18 @@ class SelfPlayManager:
             dtype=np.float64,
         )
 
-        weights = np.exp(-distances / self.temperature)
-        probabilities = weights / weights.sum()
+        weights = np.exp(
+            -distances / self.temperature
+        )
 
-        entry = rng.choice(eligible_entries, p=probabilities)
+        probabilities = (
+            weights / weights.sum()
+        )
 
-        return entry.agent
+        entry = rng.choice(
+            eligible_entries,
+            p=probabilities,
+        )
+
+        # Every episode gets its own Agent wrapper/instance.
+        return entry.create_agent()

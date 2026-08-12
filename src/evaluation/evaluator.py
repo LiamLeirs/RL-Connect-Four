@@ -1,11 +1,6 @@
 from src.agents.agents import RandomAgent
 
-def evaluate_agent(env, agent, opponent=None, num_episodes=5000, seed=0, get_elo_scores=False):
-    if opponent is None:
-        opponent = RandomAgent()
-
-    env.set_opponent(opponent)
-
+def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
     agent_wins = 0
     opponent_wins = 0
     draws = 0

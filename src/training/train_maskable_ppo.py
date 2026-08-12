@@ -4,22 +4,34 @@ from pathlib import Path
 
 from sb3_contrib import MaskablePPO
 
-from src.agents.agents import ModelAgent, RandomAgent
+from src.agents.agents import (
+    MiniMaxAgent,
+    ModelAgent,
+    RandomAgent,
+    TacticalAgent,
+)
 from src.envs.connect_four_env import ConnectFourEnv
 from src.evaluation.evaluator import evaluate_agent
-from src.self_play.self_play_manager import SelfPlayManager, SelfPlayCallback
+from src.self_play.self_play_manager import (
+    SelfPlayCallback,
+    SelfPlayManager,
+)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+    )
 
-    # This is the number of environment transitions, not episodes.
     parser.add_argument(
         "--total-timesteps",
         type=int,
-        default=300_000,
+        default=500_000,
+        help="Number of environment transitions.",
     )
 
     parser.add_argument(
@@ -35,24 +47,89 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=50_000,
+    )
+
+    parser.add_argument(
+        "--window-size",
+        type=int,
+        default=8,
+    )
+
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=200.0,
+    )
+
+    parser.add_argument(
         "--model-path",
         type=Path,
         default=Path("models/ppo_selfplay/final_model"),
     )
 
     parser.add_argument(
-        "--save-path",
+        "--checkpoint-dir",
         type=Path,
-        default=Path("results/ppo_vs_random.json"),
+        default=Path("models/ppo_selfplay/checkpoints"),
+    )
+
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("results/ppo_selfplay"),
     )
 
     parser.add_argument(
         "--tensorboard-log",
         type=Path,
-        default=Path("runs/ppo_random"),
+        default=Path("runs/ppo_selfplay"),
     )
 
     return parser.parse_args()
+
+
+def evaluate_final_model(
+    model_path,
+    num_episodes,
+    seed,
+):
+    model = MaskablePPO.load(model_path)
+
+    agent = ModelAgent(
+        model=model,
+        deterministic=True,
+    )
+
+    opponents = {
+        "random": RandomAgent(),
+        "tactical": TacticalAgent(),
+        "minimax_2": MiniMaxAgent(depth=2),
+        "minimax_4": MiniMaxAgent(depth=4),
+    }
+
+    results = {}
+
+    for index, (name, opponent) in enumerate(opponents.items()):
+        env = ConnectFourEnv(
+            opponent=opponent,
+            render_mode=None,
+        )
+
+        try:
+            results[name] = evaluate_agent(
+                env=env,
+                agent=agent,
+                opponent=opponent,
+                num_episodes=num_episodes,
+                seed=seed + index * 10_000,
+            )
+        finally:
+            env.close()
+
+    return results
 
 
 def main():
@@ -62,16 +139,26 @@ def main():
         parents=True,
         exist_ok=True,
     )
-    args.save_path.parent.mkdir(
+
+    args.checkpoint_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
+
+    args.results_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     args.tensorboard_log.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    manager = SelfPlayManager()
+    manager = SelfPlayManager(
+        window_size=args.window_size,
+        temperature=args.temperature,
+    )
 
     train_env = ConnectFourEnv(
         opponent_provider=manager,
@@ -99,12 +186,18 @@ def main():
         },
     )
 
+    callback = SelfPlayCallback(
+        manager=manager,
+        checkpoint_freq=args.checkpoint_freq,
+        checkpoint_dir=args.checkpoint_dir,
+    )
+
     try:
         model.learn(
             total_timesteps=args.total_timesteps,
             progress_bar=True,
-            tb_log_name="maskable_ppo_random",
-            callback=SelfPlayCallback(manager=manager, checkpoint_freq=50_000, checkpoint_dir="models/ppo_selfplay/checkpoints"),
+            tb_log_name="maskable_ppo_selfplay",
+            callback=callback,
         )
 
         model.save(args.model_path)
@@ -112,40 +205,47 @@ def main():
     finally:
         train_env.close()
 
-    eval_env = ConnectFourEnv(
-        opponent=RandomAgent(),
-        render_mode=None,
-    )
-
-    trained_agent = ModelAgent(
-        model=model,
-        deterministic=True,
-    )
-
-    results = evaluate_agent(
-        env=eval_env,
-        agent=trained_agent,
-        opponent=RandomAgent(),
+    results = evaluate_final_model(
+        model_path=args.model_path,
         num_episodes=args.num_eval_episodes,
         seed=args.seed + 10_000,
-        )
+    )
 
-    eval_env.close()
-
-    results["training"] = {
-        "seed": args.seed,
-        "total_timesteps": args.total_timesteps,
-        "gamma": args.gamma,
-        "model_path": str(args.model_path),
+    output = {
+        "training": {
+            "seed": args.seed,
+            "total_timesteps": args.total_timesteps,
+            "gamma": args.gamma,
+            "checkpoint_freq": args.checkpoint_freq,
+            "window_size": args.window_size,
+            "temperature": args.temperature,
+            "final_learner_elo": manager.learner_elo,
+            "model_path": str(args.model_path),
+        },
+        "evaluation": results,
     }
 
-    with args.save_path.open(
+    save_path = (
+        args.results_dir
+        / "final_evaluation.json"
+    )
+
+    with save_path.open(
         "w",
         encoding="utf-8",
     ) as file:
-        json.dump(results, file, indent=4)
+        json.dump(
+            output,
+            file,
+            indent=4,
+        )
 
-    print(json.dumps(results, indent=4))
+    print(
+        json.dumps(
+            output,
+            indent=4,
+        )
+    )
 
 
 if __name__ == "__main__":

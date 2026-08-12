@@ -133,11 +133,9 @@ class ConnectFourEnv(gym.Env):
         if self.np_random.random() < 0.5:
             self.agent_player = 1
             self.opponent_player = -1
-            print("Agent is first player")
         else:
             self.agent_player = -1
             self.opponent_player = 1
-            print("Agent is second player")
 
         result = None
 
