@@ -1,4 +1,6 @@
 from src.agents.agents import RandomAgent
+from tqdm import tqdm
+
 
 def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
     agent_wins = 0
@@ -16,7 +18,7 @@ def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
 
     elo_scores = []
 
-    for episode in range(num_episodes):
+    for episode in tqdm(range(num_episodes), ascii=True, desc="Running evaluation"):
         learner_starts = False
         if episode % 2 == 0:
             learner_starts = True
@@ -64,7 +66,7 @@ def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
         if winner == 0:
             draws += 1
             elo_scores.append(0.5)
-            
+
         elif winner == agent_player:
             agent_wins += 1
             elo_scores.append(1)
@@ -85,7 +87,7 @@ def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
 
     if get_elo_scores:
         return elo_scores
-    
+
     return {
         "seed": seed,
         "num_episodes": num_episodes,
@@ -132,3 +134,12 @@ def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
             total_steps,
         ),
     }
+
+
+if __name__ == "__main__":
+    from src.envs.connect_four_env import ConnectFourEnv
+    from src.agents.agents import MiniMaxAgent
+    env = ConnectFourEnv(opponent=MiniMaxAgent(depth=4))
+    agent = MiniMaxAgent(depth=2, game=env.game, renderer=env.renderer)
+    results = evaluate_agent(env, agent, num_episodes=100)
+    print(results)

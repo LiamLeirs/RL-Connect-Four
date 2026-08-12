@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--agent",
         choices=SUPPORTED_AGENT_TYPES,
-        default="ppo",
+        default="minimax",
         help="Agent being evaluated.",
     )
 
