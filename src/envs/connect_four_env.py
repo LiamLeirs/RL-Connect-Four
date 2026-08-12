@@ -129,13 +129,21 @@ class ConnectFourEnv(gym.Env):
 
         self.current_opponent.on_episode_start(self.np_random)
 
-        # Randomize sides
-        if self.np_random.random() < 0.5:
-            self.agent_player = 1
-            self.opponent_player = -1
+        if options is not None and "learner_starts" in options:
+            if options["learner_starts"]:
+                self.agent_player = 1
+                self.opponent_player = -1
+            else:
+                self.agent_player = -1
+                self.opponent_player = 1
         else:
-            self.agent_player = -1
-            self.opponent_player = 1
+            # Randomize sides
+            if self.np_random.random() < 0.5:
+                self.agent_player = 1
+                self.opponent_player = -1
+            else:
+                self.agent_player = -1
+                self.opponent_player = 1
 
         result = None
 

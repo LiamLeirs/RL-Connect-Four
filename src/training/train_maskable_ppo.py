@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint-freq",
         type=int,
-        default=50_000,
+        default=25_000,
     )
 
     parser.add_argument(
@@ -63,6 +63,12 @@ def parse_args():
         type=float,
         default=200.0,
     )
+
+    parser.add_argument(
+            "--K",
+            type=float,
+            default=8,
+        )
 
     parser.add_argument(
         "--model-path",
@@ -158,6 +164,7 @@ def main():
     manager = SelfPlayManager(
         window_size=args.window_size,
         temperature=args.temperature,
+        K = args.K
     )
 
     train_env = ConnectFourEnv(

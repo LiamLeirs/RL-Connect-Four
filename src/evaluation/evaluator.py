@@ -17,8 +17,13 @@ def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
     elo_scores = []
 
     for episode in range(num_episodes):
+        learner_starts = False
+        if episode % 2 == 0:
+            learner_starts = True
+
         observation, info = env.reset(
-            seed=seed + episode
+            seed=seed + episode,
+            options={"learner_starts": learner_starts}
         )
 
         agent_player = info["agent_player"]

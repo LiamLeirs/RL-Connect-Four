@@ -66,8 +66,7 @@ class SelfPlayCallback(BaseCallback):
 
         num_eval_games = 100
 
-        for opponent_entry in opponent_entries:
-            # IMPORTANT:
+        for i, opponent_entry in enumerate(opponent_entries):
             # Evaluation gets a fresh opponent instance.
             evaluation_opponent = opponent_entry.create_agent()
 
@@ -85,6 +84,7 @@ class SelfPlayCallback(BaseCallback):
                     agent=learner_agent,
                     num_episodes=num_eval_games,
                     get_elo_scores=True,
+                    seed=self.num_timesteps+i*10_000
                 )
             finally:
                 env.close()
@@ -125,7 +125,7 @@ class SelfPlayCallback(BaseCallback):
 
 
 class SelfPlayManager:
-    def __init__(self, window_size=8, temperature=200):
+    def __init__(self, window_size=8, temperature=200, K=8):
         self.league = [
             PlayerEntry(
                 name="Random",
@@ -152,6 +152,7 @@ class SelfPlayManager:
         self.window_size = window_size
         self.learner_elo = 1200
         self.temperature = temperature
+        self.K = K
 
     def add_checkpoint(self, name, model, timestep):
         self.league.append(
@@ -172,7 +173,7 @@ class SelfPlayManager:
             1 + 10 ** ((opponent_elo - learner_elo) / 400)
         )
 
-    def update_elo(self, opponent_entry, results, K=32):
+    def update_elo(self, opponent_entry, results):
         learner_elo = self.learner_elo
 
         for elo_score in results:
@@ -183,11 +184,11 @@ class SelfPlayManager:
 
             expected_opponent = 1 - expected_learner
 
-            new_learner_elo = learner_elo + K * (
+            new_learner_elo = learner_elo + self.K * (
                 elo_score - expected_learner
             )
 
-            new_opponent_elo = opponent_entry.elo + K * (
+            new_opponent_elo = opponent_entry.elo + self.K * (
                 (1 - elo_score) - expected_opponent
             )
 
