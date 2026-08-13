@@ -6,25 +6,29 @@ from src.agents.agents import *
 import torch
 from sb3_contrib import MaskablePPO
 
+
 class ConnectFourEnv(gym.Env):
     metadata = {
         "render_modes": ["human", "rgb_array"],
         "render_fps": 60,
     }
+
     def __init__(self, num_rows=6, num_cols=7, win_req=4, opponent=None, opponent_provider=None, render_mode=None):
         super().__init__()
         if render_mode not in {None, "human", "rgb_array"}:
             raise ValueError(f"Unsupported render mode: {render_mode}")
-        
-        self.game = ConnectFour(num_cols=num_cols, num_rows=num_rows, win_req=win_req)
+
+        self.game = ConnectFour(
+            num_cols=num_cols, num_rows=num_rows, win_req=win_req)
         self.action_space = gym.spaces.Discrete(self.game.num_cols)
-        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(2, self.game.num_rows, self.game.num_cols), dtype=np.float32)
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(
+            2, self.game.num_rows, self.game.num_cols), dtype=np.float32)
         self.render_mode = render_mode
         self.renderer = None
 
         self.opponent_provider = opponent_provider
         self.fixed_opponent = opponent or RandomAgent()
-        self.current_opponent = None        
+        self.current_opponent = None
 
     def _ensure_renderer(self):
         if self.renderer is None:
@@ -101,17 +105,17 @@ class ConnectFourEnv(gym.Env):
 
     def _get_info(self, result: MoveResult | None = None) -> dict:
         return {
-        "action_mask": self.action_masks(),
-        "winner": self.game.get_winner(),
-        "agent_player": self.agent_player,
-        "opponent_player": self.opponent_player,
-        "result": result,
-    }
+            "action_mask": self.action_masks(),
+            "winner": self.game.get_winner(),
+            "agent_player": self.agent_player,
+            "opponent_player": self.opponent_player,
+            "result": result,
+        }
 
     def action_masks(self) -> np.ndarray:
         return self.game.get_legal_moves().copy()
 
-    def reset(self,*, seed=None, options=None):
+    def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
         if self.render_mode == "human":
@@ -202,16 +206,17 @@ class ConnectFourEnv(gym.Env):
             False,
             info,
         )
-    
+
     def step(self, action: int):
         if not self.agent_turn:
-            raise RuntimeError("step() called when it is not the agent's turn.")
+            raise RuntimeError(
+                "step() called when it is not the agent's turn.")
 
         action = int(action)
 
         if not self.action_space.contains(action):
             raise ValueError(f"Invalid action: {action}")
-        
+
         # Check if action is legal
         if not self.action_masks()[action]:
             self.game.skip_turn()
@@ -241,7 +246,7 @@ class ConnectFourEnv(gym.Env):
                 True,
                 self._get_info(agent_result)
             )
-        
+
         # Opponent move
         opponent_action = self._choose_opponent_action()
         opponent_result = self.game.make_move(opponent_action)
@@ -266,10 +271,13 @@ class ConnectFourEnv(gym.Env):
             self.renderer.close()
             self.renderer = None
 
+
 if __name__ == "__main__":
     opponent = HumanAgent()
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
-    agent = MiniMaxAgent(game=env.game, renderer=env.renderer, depth=2)
+    model = MaskablePPO.load("models/ppo_selfplay/final_model.zip")
+    agent = ModelAgent(
+        model=model, deterministic=True)
     obs, info = env.reset()
     terminated = False
     running = True
@@ -279,7 +287,7 @@ if __name__ == "__main__":
         event = env.renderer.update()
         if event == RendererEvent.QUIT:
             running = False
-            continue 
+            continue
         elif event == RendererEvent.RESET:
             obs, info = env.reset()
             terminated = False

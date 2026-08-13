@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--agent",
         choices=SUPPORTED_AGENT_TYPES,
-        default="minimax",
+        default="ppo",
         help="Agent being evaluated.",
     )
 
@@ -111,7 +111,7 @@ def create_agent(
         return TacticalAgent()
 
     if agent_type == "minimax":
-        return MiniMaxAgent(depth=2)
+        return MiniMaxAgent(depth=4)
 
     if agent_type == "ppo":
         resolved_path = resolve_model_path(model_path)
@@ -182,6 +182,9 @@ def main() -> None:
         opponent=opponent,
         render_mode=None,
     )
+
+    evaluated_agent.attach(game=env.game,
+                           renderer=env.renderer)
 
     try:
         results = evaluate_agent(
