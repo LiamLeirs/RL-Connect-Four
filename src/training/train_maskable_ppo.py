@@ -37,13 +37,19 @@ def parse_args():
     parser.add_argument(
         "--num-eval-episodes",
         type=int,
-        default=5_000,
+        default=100,
     )
 
     parser.add_argument(
         "--gamma",
         type=float,
         default=0.99,
+    )
+
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=3e-4,
     )
 
     parser.add_argument(
@@ -169,7 +175,8 @@ def main():
     manager = SelfPlayManager(
         window_size=args.window_size,
         temperature=args.temperature,
-        K=args.K
+        K=args.K,
+
     )
 
     train_env = ConnectFourEnv(
@@ -180,7 +187,7 @@ def main():
     model = MaskablePPO(
         policy="MlpPolicy",
         env=train_env,
-        learning_rate=3e-4,
+        learning_rate=args.lr,
         n_steps=1024,
         batch_size=256,
         n_epochs=10,
@@ -203,6 +210,7 @@ def main():
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_dir=args.checkpoint_dir,
         rating_freq=args.rating_freq,
+        results_path=args.results_dir / "training_history.csv"
     )
 
     try:
@@ -228,8 +236,13 @@ def main():
         "training": {
             "seed": args.seed,
             "total_timesteps": args.total_timesteps,
+            "learning_rate": args.lr,
             "gamma": args.gamma,
+            "batch_size": model.batch_size,
+            "n_epochs": model.n_epochs,
             "checkpoint_freq": args.checkpoint_freq,
+            "rating_freq": args.rating_freq,
+            "Elo_K": args.K,
             "window_size": args.window_size,
             "temperature": args.temperature,
             "final_learner_elo": manager.learner_elo,

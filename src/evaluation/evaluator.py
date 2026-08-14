@@ -2,7 +2,7 @@ from src.agents.agents import RandomAgent
 from tqdm import tqdm
 
 
-def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
+def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False, varied_starting_states=False):
     agent_wins = 0
     opponent_wins = 0
     draws = 0
@@ -18,7 +18,7 @@ def evaluate_agent(env, agent, num_episodes=5000, seed=0, get_elo_scores=False):
 
     elo_scores = []
 
-    for episode in tqdm(range(num_episodes), ascii=True, desc="Running evaluation"):
+    for episode in range(num_episodes):
         learner_starts = False
         if episode % 2 == 0:
             learner_starts = True

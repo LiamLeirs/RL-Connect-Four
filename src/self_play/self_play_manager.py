@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+import pandas as pd
 
 import numpy as np
 from loguru import logger
@@ -35,6 +36,7 @@ class SelfPlayCallback(BaseCallback):
         checkpoint_freq,
         rating_freq,
         checkpoint_dir,
+        results_path,
         verbose=0,
     ):
         super().__init__(verbose=verbose)
@@ -45,10 +47,31 @@ class SelfPlayCallback(BaseCallback):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.next_checkpoint = checkpoint_freq
         self.next_rating = rating_freq
+        self.results_path = Path(results_path)
 
         self.checkpoint_dir.mkdir(
             parents=True,
             exist_ok=True,
+        )
+
+        self.results_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        columns = [
+            "timestep",
+            "learner_elo",
+            "opponent",
+            "opponent_elo",
+            "wins",
+            "draws",
+            "losses",
+        ]
+
+        pd.DataFrame(columns=columns).to_csv(
+            self.results_path,
+            index=False,
         )
 
     def save_checkpoint(self):
@@ -102,6 +125,7 @@ class SelfPlayCallback(BaseCallback):
 
     def run_rating_period(self):
         timestep = self.num_timesteps
+        rating_rows = []
 
         # Freeze the learner Elo for this entire rating period.
         learner_elo_before = self.manager.learner_elo
@@ -173,6 +197,18 @@ class SelfPlayCallback(BaseCallback):
 
             rating_results.append(elo_delta)
 
+            rating_rows.append(
+                {
+                    "timestep": timestep,
+                    "learner_elo": self.manager.learner_elo,
+                    "opponent": opponent_entry.name,
+                    "opponent_elo": opponent_entry.elo,
+                    "wins": wins,
+                    "draws": draws,
+                    "losses": losses,
+                }
+            )
+
             logger.info(
                 f"vs {opponent_entry.name:<12} | "
                 f"W/D/L={wins}/{draws}/{losses} | "
@@ -193,6 +229,15 @@ class SelfPlayCallback(BaseCallback):
             rating_results,
         ):
             opponent_entry.elo -= elo_delta
+
+        df = pd.DataFrame(rating_rows)
+
+        df.to_csv(
+            self.results_path,
+            mode="a",
+            header=False,
+            index=False,
+        )
 
         logger.info(
             f"Rating period complete | "
