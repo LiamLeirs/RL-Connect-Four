@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.agents.agents import Agent, RandomAgent
+from src.agents.agents import Agent, ModelAgent
 from src.self_play.self_play_manager import (
     PlayerEntry,
     SelfPlayManager,
@@ -9,14 +9,12 @@ from src.self_play.self_play_manager import (
 
 
 class DummyAgent(Agent):
+    def __init__(self, tag="dummy"):
+        self.tag = tag
+
     def select_action(self, observation, action_mask, rng):
         legal_actions = np.flatnonzero(action_mask)
         return int(legal_actions[0])
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -24,7 +22,47 @@ def manager():
     return SelfPlayManager(
         window_size=3,
         temperature=200,
+        K=32,
     )
+
+
+def make_entry(
+    name,
+    elo=1200,
+    kind="checkpoint",
+    timestep=None,
+):
+    return PlayerEntry(
+        name=name,
+        agent_factory=lambda name=name: DummyAgent(tag=name),
+        timestep=timestep,
+        kind=kind,
+        elo=elo,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PlayerEntry / factory
+# ---------------------------------------------------------------------------
+
+
+def test_player_entry_creates_agent():
+    entry = make_entry("Test")
+
+    agent = entry.create_agent()
+
+    assert isinstance(agent, DummyAgent)
+    assert agent.tag == "Test"
+
+
+def test_player_entry_factory_creates_fresh_instances():
+    entry = make_entry("Test")
+
+    agent_one = entry.create_agent()
+    agent_two = entry.create_agent()
+
+    assert agent_one is not agent_two
+    assert agent_one.tag == agent_two.tag == "Test"
 
 
 # ---------------------------------------------------------------------------
@@ -74,117 +112,92 @@ def test_expected_scores_are_complementary(manager):
 
 
 # ---------------------------------------------------------------------------
-# Elo updates
+# Elo delta calculation
 # ---------------------------------------------------------------------------
 
 
-def test_equal_elo_learner_win_updates_to_1216_and_1184(manager):
-    manager.learner_elo = 1200
-
-    opponent = PlayerEntry(
-        name="Opponent",
-        agent=DummyAgent(),
-        elo=1200,
-    )
-
-    manager.update_elo(
-        opponent,
+def test_equal_elo_learner_win_produces_positive_16_delta(manager):
+    delta = manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
         results=[1.0],
-        K=32,
     )
 
-    assert manager.learner_elo == pytest.approx(1216)
-    assert opponent.elo == pytest.approx(1184)
+    assert delta == pytest.approx(16.0)
 
 
-def test_equal_elo_learner_loss_updates_to_1184_and_1216(manager):
-    manager.learner_elo = 1200
-
-    opponent = PlayerEntry(
-        name="Opponent",
-        agent=DummyAgent(),
-        elo=1200,
-    )
-
-    manager.update_elo(
-        opponent,
+def test_equal_elo_learner_loss_produces_negative_16_delta(manager):
+    delta = manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
         results=[0.0],
-        K=32,
     )
 
-    assert manager.learner_elo == pytest.approx(1184)
-    assert opponent.elo == pytest.approx(1216)
+    assert delta == pytest.approx(-16.0)
 
 
-def test_equal_elo_draw_does_not_change_ratings(manager):
+def test_equal_elo_draw_produces_zero_delta(manager):
+    delta = manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
+        results=[0.5],
+    )
+
+    assert delta == pytest.approx(0.0)
+
+
+def test_calculate_elo_delta_does_not_mutate_manager(manager):
     manager.learner_elo = 1200
 
-    opponent = PlayerEntry(
-        name="Opponent",
-        agent=DummyAgent(),
-        elo=1200,
-    )
-
-    manager.update_elo(
-        opponent,
-        results=[0.5],
-        K=32,
+    manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
+        results=[1.0, 1.0],
     )
 
     assert manager.learner_elo == pytest.approx(1200)
-    assert opponent.elo == pytest.approx(1200)
 
 
-def test_multiple_games_update_sequentially(manager):
-    manager.learner_elo = 1200
-
-    opponent = PlayerEntry(
-        name="Opponent",
-        agent=DummyAgent(),
-        elo=1200,
-    )
-
-    manager.update_elo(
-        opponent,
+def test_multiple_games_are_processed_sequentially(manager):
+    delta = manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
         results=[1.0, 1.0],
-        K=32,
     )
 
-    # First game is exactly +16.
-    # Second game should be less than +16 because learner is now favored.
-    assert manager.learner_elo > 1216
-    assert manager.learner_elo < 1232
-
-    assert opponent.elo < 1184
-    assert opponent.elo > 1168
+    # First win gives +16.
+    # The learner is then favored in game two,
+    # so the second increase is less than +16.
+    assert delta > 16
+    assert delta < 32
 
 
-def test_elo_is_zero_sum(manager):
-    manager.learner_elo = 1200
-
-    opponent = PlayerEntry(
-        name="Opponent",
-        agent=DummyAgent(),
-        elo=1200,
+def test_win_then_loss_has_smaller_total_than_single_win(manager):
+    single_win_delta = manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
+        results=[1.0],
     )
 
-    initial_total = (
-        manager.learner_elo
-        + opponent.elo
+    win_loss_delta = manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
+        results=[1.0, 0.0],
     )
 
-    manager.update_elo(
-        opponent,
-        results=[1.0, 0.0, 0.5, 1.0],
-        K=32,
+    assert win_loss_delta < single_win_delta
+
+
+def test_calculate_elo_delta_uses_manager_k_factor():
+    manager = SelfPlayManager(K=8)
+
+    delta = manager.calculate_elo_delta(
+        learner_elo=1200,
+        opponent_elo=1200,
+        results=[1.0],
     )
 
-    final_total = (
-        manager.learner_elo
-        + opponent.elo
-    )
-
-    assert final_total == pytest.approx(initial_total)
+    assert delta == pytest.approx(4.0)
 
 
 # ---------------------------------------------------------------------------
@@ -192,20 +205,19 @@ def test_elo_is_zero_sum(manager):
 # ---------------------------------------------------------------------------
 
 
-def test_update_elo_tracks_opponent_stats(manager):
-    opponent = PlayerEntry(
+def test_record_results_tracks_opponent_stats(manager):
+    opponent = make_entry(
         name="Opponent",
-        agent=DummyAgent(),
         elo=1200,
     )
 
-    manager.update_elo(
+    manager.record_results(
         opponent,
         results=[
-            1.0,   # opponent loses
-            0.0,   # opponent wins
-            0.5,   # draw
-            1.0,   # opponent loses
+            1.0,  # learner wins -> opponent loss
+            0.0,  # learner loses -> opponent win
+            0.5,  # draw
+            1.0,  # learner wins -> opponent loss
         ],
     )
 
@@ -213,6 +225,35 @@ def test_update_elo_tracks_opponent_stats(manager):
     assert opponent.wins == 1
     assert opponent.losses == 2
     assert opponent.draws == 1
+
+
+def test_record_results_accumulates_statistics(manager):
+    opponent = make_entry("Opponent")
+
+    manager.record_results(
+        opponent,
+        results=[1.0, 0.5],
+    )
+
+    manager.record_results(
+        opponent,
+        results=[0.0],
+    )
+
+    assert opponent.games_played == 3
+    assert opponent.wins == 1
+    assert opponent.losses == 1
+    assert opponent.draws == 1
+
+
+def test_record_results_rejects_invalid_score(manager):
+    opponent = make_entry("Opponent")
+
+    with pytest.raises(ValueError):
+        manager.record_results(
+            opponent,
+            results=[0.25],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -223,18 +264,17 @@ def test_update_elo_tracks_opponent_stats(manager):
 def test_checkpoint_inherits_current_learner_elo(manager):
     manager.learner_elo = 1375.5
 
-    agent = DummyAgent()
+    dummy_model = object()
 
     manager.add_checkpoint(
         name="PPO_50000",
-        agent=agent,
+        model=dummy_model,
         timestep=50_000,
     )
 
     checkpoint = manager.league[-1]
 
     assert checkpoint.name == "PPO_50000"
-    assert checkpoint.agent is agent
     assert checkpoint.timestep == 50_000
     assert checkpoint.kind == "checkpoint"
     assert checkpoint.elo == pytest.approx(1375.5)
@@ -245,11 +285,44 @@ def test_checkpoint_is_added_to_league(manager):
 
     manager.add_checkpoint(
         name="PPO_50000",
-        agent=DummyAgent(),
+        model=object(),
         timestep=50_000,
     )
 
     assert len(manager.league) == league_size_before + 1
+
+
+def test_checkpoint_factory_creates_model_agent(manager):
+    dummy_model = object()
+
+    manager.add_checkpoint(
+        name="PPO_50000",
+        model=dummy_model,
+        timestep=50_000,
+    )
+
+    checkpoint = manager.league[-1]
+
+    agent = checkpoint.create_agent()
+
+    assert isinstance(agent, ModelAgent)
+
+
+def test_checkpoint_factory_creates_fresh_wrappers(manager):
+    dummy_model = object()
+
+    manager.add_checkpoint(
+        name="PPO_50000",
+        model=dummy_model,
+        timestep=50_000,
+    )
+
+    checkpoint = manager.league[-1]
+
+    agent_one = checkpoint.create_agent()
+    agent_two = checkpoint.create_agent()
+
+    assert agent_one is not agent_two
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +332,7 @@ def test_checkpoint_is_added_to_league(manager):
 
 def test_sample_evaluation_league_returns_player_entries(manager):
     entries = manager.sample_evaluation_league(
-        num_opponents=4
+        num_opponents=4,
     )
 
     assert len(entries) == 4
@@ -270,7 +343,7 @@ def test_sample_evaluation_league_returns_player_entries(manager):
 
 def test_sample_evaluation_league_does_not_exceed_league_size(manager):
     entries = manager.sample_evaluation_league(
-        num_opponents=100
+        num_opponents=100,
     )
 
     assert len(entries) == len(manager.league)
@@ -280,42 +353,18 @@ def test_sample_evaluation_league_prefers_nearby_ratings():
     manager = SelfPlayManager()
 
     manager.league = [
-        PlayerEntry(
-            name="VeryLow",
-            agent=DummyAgent(),
-            elo=700,
-        ),
-        PlayerEntry(
-            name="Low",
-            agent=DummyAgent(),
-            elo=1100,
-        ),
-        PlayerEntry(
-            name="NearLow",
-            agent=DummyAgent(),
-            elo=1190,
-        ),
-        PlayerEntry(
-            name="NearHigh",
-            agent=DummyAgent(),
-            elo=1210,
-        ),
-        PlayerEntry(
-            name="High",
-            agent=DummyAgent(),
-            elo=1300,
-        ),
-        PlayerEntry(
-            name="VeryHigh",
-            agent=DummyAgent(),
-            elo=1700,
-        ),
+        make_entry("VeryLow", elo=700),
+        make_entry("Low", elo=1100),
+        make_entry("NearLow", elo=1190),
+        make_entry("NearHigh", elo=1210),
+        make_entry("High", elo=1300),
+        make_entry("VeryHigh", elo=1700),
     ]
 
     manager.learner_elo = 1200
 
     entries = manager.sample_evaluation_league(
-        num_opponents=4
+        num_opponents=4,
     )
 
     names = {
@@ -334,32 +383,16 @@ def test_sample_evaluation_league_fills_from_available_side():
     manager = SelfPlayManager()
 
     manager.league = [
-        PlayerEntry(
-            name="A",
-            agent=DummyAgent(),
-            elo=900,
-        ),
-        PlayerEntry(
-            name="B",
-            agent=DummyAgent(),
-            elo=1000,
-        ),
-        PlayerEntry(
-            name="C",
-            agent=DummyAgent(),
-            elo=1100,
-        ),
-        PlayerEntry(
-            name="D",
-            agent=DummyAgent(),
-            elo=1300,
-        ),
+        make_entry("A", elo=900),
+        make_entry("B", elo=1000),
+        make_entry("C", elo=1100),
+        make_entry("D", elo=1300),
     ]
 
     manager.learner_elo = 1200
 
     entries = manager.sample_evaluation_league(
-        num_opponents=4
+        num_opponents=4,
     )
 
     assert len(entries) == 4
@@ -375,6 +408,23 @@ def test_sample_evaluation_league_fills_from_available_side():
     }
 
 
+def test_sample_evaluation_league_handles_single_entry():
+    manager = SelfPlayManager()
+
+    manager.league = [
+        make_entry("Only", elo=1200),
+    ]
+
+    manager.learner_elo = 1200
+
+    entries = manager.sample_evaluation_league(
+        num_opponents=4,
+    )
+
+    assert len(entries) == 1
+    assert entries[0].name == "Only"
+
+
 # ---------------------------------------------------------------------------
 # Training opponent sampling
 # ---------------------------------------------------------------------------
@@ -382,10 +432,29 @@ def test_sample_evaluation_league_fills_from_available_side():
 
 def test_sample_opponent_returns_agent(manager):
     opponent = manager.sample_opponent(
-        rng=np.random.default_rng(42)
+        rng=np.random.default_rng(42),
     )
 
     assert isinstance(opponent, Agent)
+
+
+def test_sample_opponent_returns_fresh_instance():
+    manager = SelfPlayManager()
+    manager.league = [
+        make_entry(
+            name="Only",
+            kind="baseline",
+            elo=1200,
+        )
+    ]
+
+    rng = np.random.default_rng(42)
+
+    first = manager.sample_opponent(rng)
+    second = manager.sample_opponent(rng)
+
+    assert first is not second
+    assert first.tag == second.tag == "Only"
 
 
 def test_sample_opponent_only_uses_latest_checkpoint_window():
@@ -394,61 +463,44 @@ def test_sample_opponent_only_uses_latest_checkpoint_window():
         temperature=200,
     )
 
-    # Remove default league to make the test controlled.
-    manager.league = []
-
-    baseline = PlayerEntry(
-        name="Baseline",
-        agent=DummyAgent(),
-        kind="baseline",
-        elo=1200,
-    )
-
-    old_checkpoint = PlayerEntry(
-        name="Old",
-        agent=DummyAgent(),
-        timestep=10_000,
-        kind="checkpoint",
-        elo=1200,
-    )
-
-    recent_checkpoint_1 = PlayerEntry(
-        name="Recent1",
-        agent=DummyAgent(),
-        timestep=20_000,
-        kind="checkpoint",
-        elo=1200,
-    )
-
-    recent_checkpoint_2 = PlayerEntry(
-        name="Recent2",
-        agent=DummyAgent(),
-        timestep=30_000,
-        kind="checkpoint",
-        elo=1200,
-    )
-
-    manager.league.extend(
-        [
-            baseline,
-            old_checkpoint,
-            recent_checkpoint_1,
-            recent_checkpoint_2,
-        ]
-    )
+    manager.league = [
+        make_entry(
+            name="Baseline",
+            kind="baseline",
+            elo=1200,
+        ),
+        make_entry(
+            name="Old",
+            kind="checkpoint",
+            timestep=10_000,
+            elo=1200,
+        ),
+        make_entry(
+            name="Recent1",
+            kind="checkpoint",
+            timestep=20_000,
+            elo=1200,
+        ),
+        make_entry(
+            name="Recent2",
+            kind="checkpoint",
+            timestep=30_000,
+            elo=1200,
+        ),
+    ]
 
     rng = np.random.default_rng(123)
 
-    selected_agents = {
-        manager.sample_opponent(rng)
+    selected_tags = {
+        manager.sample_opponent(rng).tag
         for _ in range(500)
     }
 
-    assert baseline.agent in selected_agents
-    assert recent_checkpoint_1.agent in selected_agents
-    assert recent_checkpoint_2.agent in selected_agents
+    assert "Baseline" in selected_tags
+    assert "Recent1" in selected_tags
+    assert "Recent2" in selected_tags
 
-    assert old_checkpoint.agent not in selected_agents
+    assert "Old" not in selected_tags
 
 
 def test_closer_elo_is_sampled_more_often():
@@ -457,27 +509,18 @@ def test_closer_elo_is_sampled_more_often():
         temperature=100,
     )
 
-    manager.league = []
-
-    close_agent = DummyAgent()
-    far_agent = DummyAgent()
-
-    manager.league.extend(
-        [
-            PlayerEntry(
-                name="Close",
-                agent=close_agent,
-                kind="baseline",
-                elo=1210,
-            ),
-            PlayerEntry(
-                name="Far",
-                agent=far_agent,
-                kind="baseline",
-                elo=1700,
-            ),
-        ]
-    )
+    manager.league = [
+        make_entry(
+            name="Close",
+            kind="baseline",
+            elo=1210,
+        ),
+        make_entry(
+            name="Far",
+            kind="baseline",
+            elo=1700,
+        ),
+    ]
 
     manager.learner_elo = 1200
 
@@ -489,34 +532,94 @@ def test_closer_elo_is_sampled_more_often():
     for _ in range(5_000):
         opponent = manager.sample_opponent(rng)
 
-        if opponent is close_agent:
+        if opponent.tag == "Close":
             close_count += 1
 
-        elif opponent is far_agent:
+        elif opponent.tag == "Far":
             far_count += 1
 
     assert close_count > far_count
 
 
+def test_equal_elo_entries_have_roughly_equal_sampling_probability():
+    manager = SelfPlayManager(
+        temperature=100,
+    )
+
+    manager.league = [
+        make_entry(
+            name="A",
+            kind="baseline",
+            elo=1200,
+        ),
+        make_entry(
+            name="B",
+            kind="baseline",
+            elo=1200,
+        ),
+    ]
+
+    manager.learner_elo = 1200
+
+    rng = np.random.default_rng(42)
+
+    counts = {
+        "A": 0,
+        "B": 0,
+    }
+
+    for _ in range(5_000):
+        opponent = manager.sample_opponent(rng)
+        counts[opponent.tag] += 1
+
+    assert abs(counts["A"] - counts["B"]) < 500
+
+
 def test_same_seed_produces_same_sampling_sequence():
     manager_one = SelfPlayManager(
-        temperature=200
+        temperature=200,
     )
 
     manager_two = SelfPlayManager(
-        temperature=200
+        temperature=200,
     )
+
+    manager_one.league = [
+        make_entry(
+            name="A",
+            kind="baseline",
+            elo=1150,
+        ),
+        make_entry(
+            name="B",
+            kind="baseline",
+            elo=1250,
+        ),
+    ]
+
+    manager_two.league = [
+        make_entry(
+            name="A",
+            kind="baseline",
+            elo=1150,
+        ),
+        make_entry(
+            name="B",
+            kind="baseline",
+            elo=1250,
+        ),
+    ]
 
     rng_one = np.random.default_rng(123)
     rng_two = np.random.default_rng(123)
 
     sequence_one = [
-        type(manager_one.sample_opponent(rng_one))
+        manager_one.sample_opponent(rng_one).tag
         for _ in range(50)
     ]
 
     sequence_two = [
-        type(manager_two.sample_opponent(rng_two))
+        manager_two.sample_opponent(rng_two).tag
         for _ in range(50)
     ]
 
