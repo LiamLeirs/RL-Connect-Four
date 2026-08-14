@@ -32,6 +32,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--varied-starting-states",
+        action="store_true",
+        help="Evaluate from random legal openings of 0, 2, 4, or 6 moves.",
+    )
+
+    parser.add_argument(
         "--agent",
         choices=SUPPORTED_AGENT_TYPES,
         default="ppo",
@@ -192,6 +198,7 @@ def main() -> None:
             agent=evaluated_agent,
             num_episodes=args.num_episodes,
             seed=args.seed,
+            varied_starting_states=args.varied_starting_states,
         )
     finally:
         env.close()

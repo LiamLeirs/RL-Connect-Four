@@ -142,6 +142,7 @@ def evaluate_final_model(
                 agent=agent,
                 num_episodes=num_episodes,
                 seed=seed + index * 10_000,
+                varied_starting_states=True
             )
         finally:
             env.close()

@@ -123,16 +123,7 @@ class ConnectFourEnv(gym.Env):
 
         self.game.reset()
 
-        # Choose opponent for this episode
-        if self.opponent_provider is not None:
-            opponent = self.opponent_provider.sample_opponent(self.np_random)
-        else:
-            opponent = self.fixed_opponent
-        self.current_opponent = opponent
-        self._attach_opponent()
-
-        self.current_opponent.on_episode_start(self.np_random)
-
+        # Determine sides
         if options is not None and "learner_starts" in options:
             if options["learner_starts"]:
                 self.agent_player = 1
@@ -148,6 +139,35 @@ class ConnectFourEnv(gym.Env):
             else:
                 self.agent_player = -1
                 self.opponent_player = 1
+
+        # Generate varied opening
+        varied_starting_state = (
+            options is not None
+            and options.get("varied_starting_state", False)
+        )
+
+        if varied_starting_state:
+            num_opening_moves = self.np_random.choice([0, 2, 4, 6])
+            for _ in range(num_opening_moves):
+                legal_actions = np.flatnonzero(
+                    self.game.get_legal_moves()
+                )
+
+                action = int(
+                    self.np_random.choice(legal_actions)
+                )
+
+                self.game.make_move(action)
+
+        # Choose opponent for this episode
+        if self.opponent_provider is not None:
+            opponent = self.opponent_provider.sample_opponent(self.np_random)
+        else:
+            opponent = self.fixed_opponent
+        self.current_opponent = opponent
+        self._attach_opponent()
+
+        self.current_opponent.on_episode_start(self.np_random)
 
         result = None
 
