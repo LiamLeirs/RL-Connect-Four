@@ -283,6 +283,13 @@ class SelfPlayManager:
         self.learner_elo = 1200
         self.temperature = temperature
         self.K = K
+        self.baseline_weights = {
+            "Random": 0.10,
+            "Tactical": 0.20,
+            "MiniMax2": 0.35,
+            "MiniMax4": 0.35,
+        }
+        self.baseline_prob = 0.3
 
     def add_checkpoint(self, name, model, timestep):
         self.league.append(
@@ -399,15 +406,26 @@ class SelfPlayManager:
             key=lambda entry: entry.timestep,
         )
 
-        eligible_entries = (
+        recent_checkpoints = (
             checkpoints[-self.window_size:]
-            + baselines
         )
+
+        if len(baselines) > 0 and (len(recent_checkpoints) == 0 or rng.random() < self.baseline_prob):
+            baseline_weights = np.array(
+                [
+                    self.baseline_weights[entry.name]
+                    for entry in baselines
+                ],
+                dtype=np.float64,
+            )
+            baseline_weights /= baseline_weights.sum()
+            entry = rng.choice(baselines, p=baseline_weights)
+            return entry.create_agent()
 
         distances = np.array(
             [
                 abs(self.learner_elo - entry.elo)
-                for entry in eligible_entries
+                for entry in recent_checkpoints
             ],
             dtype=np.float64,
         )
@@ -421,7 +439,7 @@ class SelfPlayManager:
         )
 
         entry = rng.choice(
-            eligible_entries,
+            recent_checkpoints,
             p=probabilities,
         )
 

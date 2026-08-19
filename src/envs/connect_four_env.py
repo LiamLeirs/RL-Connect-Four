@@ -295,7 +295,8 @@ class ConnectFourEnv(gym.Env):
 if __name__ == "__main__":
     opponent = HumanAgent()
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
-    model = MaskablePPO.load("models/ppo_selfplay/final_model.zip")
+    model = MaskablePPO.load(
+        "models/ppo_selfplay/checkpoints/checkpoint_600000.zip")
     agent = ModelAgent(
         model=model, deterministic=True)
     obs, info = env.reset()

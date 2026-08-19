@@ -30,14 +30,14 @@ def parse_args():
     parser.add_argument(
         "--total-timesteps",
         type=int,
-        default=500_000,
+        default=1_000_000,
         help="Number of environment transitions.",
     )
 
     parser.add_argument(
         "--num-eval-episodes",
         type=int,
-        default=100,
+        default=1000,
     )
 
     parser.add_argument(
