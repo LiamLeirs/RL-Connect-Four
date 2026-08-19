@@ -1,23 +1,22 @@
-# RL-Connect-Four
+# RL Connect Four
 
-A reinforcement learning project for training an agent to play **Connect Four** using **PPO, self-play, action masking, and Elo-based opponent selection**.
+A reinforcement learning project in which a **PPO agent learns to play Connect Four through self-play**, competing against fixed baseline agents and historical versions of itself.
 
-The project explores how a reinforcement learning agent can progress from playing simple baseline opponents to competing against increasingly strong opponents and historical versions of itself.
+The project explores self-play, adaptive opponent selection, Elo ratings, action masking, and the progression of a reinforcement learning policy from random play toward stronger classical opponents.
 
 ## Overview
 
-The main learning agent is trained using **Maskable PPO** from `sb3-contrib`. Illegal actions are handled through action masking, ensuring that the policy only selects columns in which a move can legally be made.
+The agent is trained using **Maskable PPO** from `sb3-contrib` in a custom Gymnasium Connect Four environment.
 
-Training uses a self-play league containing several fixed baseline agents as well as historical PPO checkpoints.
-
-The current baseline agents include:
+Rather than training against a single fixed opponent, the learner plays against a dynamic league consisting of:
 
 - Random Agent
 - Tactical Agent
-- Minimax Agent (depth 2)
-- Minimax Agent (depth 4)
+- Minimax (depth 2)
+- Minimax (depth 4)
+- Historical PPO checkpoints
 
-As training progresses, snapshots of the PPO policy are added to the league. Each opponent is assigned an **Elo rating**, which is used to estimate opponent strength and influence matchmaking.
+As training progresses, snapshots of the PPO policy are added to the league. This creates a self-play curriculum in which the learner continually encounters both fixed benchmarks and previous versions of itself.
 
 ## Key Features
 
@@ -26,59 +25,53 @@ As training progresses, snapshots of the PPO policy are added to the league. Eac
 - Legal-action masking
 - Self-play training
 - Historical PPO checkpoint league
-- Elo-based player ratings
-- Elo-based opponent matchmaking
+- Elo rating system
+- Elo-based opponent selection
 - Minimax with alpha-beta pruning
-- Heuristic Connect Four evaluation
 - Random and tactical baseline agents
-- Deterministic and stochastic model evaluation
-- Automated checkpoint evaluation
+- Varied starting states for evaluation
+- Automated evaluation and CSV logging
 - TensorBoard training metrics
 - Pytest test suite
 
-## Self-Play Architecture
+## Self-Play
 
-Training and evaluation are deliberately separated.
+Training and rating are deliberately separated.
 
-During normal training, PPO plays against opponents sampled from the self-play league. These games are used to update the neural network but do **not** directly update Elo.
+During training, PPO plays games against opponents sampled from the self-play league. These games update the neural network but do not directly modify Elo ratings.
 
-At fixed rating intervals, the current PPO policy is evaluated against opponents with ratings close to the learner's current Elo.
-
-```text
-                    ┌─────────────────┐
-                    │   Maskable PPO  │
-                    │     Learner     │
-                    └────────┬────────┘
-                             │
-                             │ training games
-                             ▼
-                    ┌─────────────────┐
-                    │   Self-Play     │
-                    │     League      │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-          Baselines     PPO Checkpoints   Minimax
-```
-
-The league allows the training distribution to evolve together with the learner instead of relying on a single fixed opponent.
-
-## Elo Rating System
-
-Every player in the league starts with an Elo rating of:
+At regular intervals, the current learner is evaluated separately against several league opponents.
 
 ```text
-1200
+                   ┌─────────────────┐
+                   │   Maskable PPO  │
+                   │     Learner     │
+                   └────────┬────────┘
+                            │
+                       training games
+                            │
+                            ▼
+                   ┌─────────────────┐
+                   │    Self-Play    │
+                   │      League     │
+                   └────────┬────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+          Baselines    PPO Checkpoints   Minimax
 ```
 
-The expected score between players is calculated using the standard Elo expectation:
+Historical PPO checkpoints allow the training distribution to evolve together with the learner rather than relying entirely on hand-designed opponents.
 
-\[
-E_A = \frac{1}{1 + 10^{(R_B-R_A)/400}}
-\]
+## Elo Rating
 
-Game results are represented as:
+Each league member has an Elo rating representing its estimated playing strength.
+
+The expected score of player A against player B is
+
+$E_A = \frac{1}{1 + 10^{(R_B-R_A)/400}}$
+
+with match scores:
 
 | Result | Score |
 | ------ | ----: |
@@ -86,105 +79,148 @@ Game results are represented as:
 | Draw   |   0.5 |
 | Loss   |   0.0 |
 
-Elo evaluation is performed separately from PPO training.
+Elo evaluation is performed independently of PPO training.
 
-During a rating period:
+For each rating period:
 
-1. The learner's Elo is frozen.
-2. Several opponents near the learner's rating are selected.
-3. The current policy plays evaluation matches against each opponent.
-4. Elo changes are calculated for each matchup.
-5. The changes are applied after all matchups have finished.
+1. The learner's current rating is frozen.
+2. Several opponents are selected.
+3. Evaluation games are played against each opponent.
+4. Elo changes are calculated from the results.
+5. All rating changes are applied after evaluation has finished.
 
-This avoids making the final rating dependent on the arbitrary order in which opponents are evaluated.
+Applying the updates afterwards prevents the order of evaluation opponents from affecting the resulting ratings.
 
-## Elo-Based Matchmaking
+## Opponent Selection
 
-Training opponents are sampled from:
+Training opponents are sampled from both fixed baselines and recent PPO checkpoints.
 
-- fixed baseline agents;
-- recent PPO checkpoints.
+Historical checkpoints are kept within a sliding window so that training primarily occurs against reasonably recent policies.
 
-Historical checkpoints are limited to a sliding window so that the learner primarily trains against reasonably recent versions of itself.
+For Elo-based sampling, opponents closer to the learner's current rating receive higher probability:
 
-Opponent probabilities depend on Elo distance:
-
-\[
-w_i = e^{-\frac{|R_L-R_i|}{T}}
-\]
+$w_i = e^{-\frac{|R_L-R_i|}{T}}$
 
 where:
 
-- \(R_L\) is the learner Elo;
-- \(R_i\) is the opponent Elo;
-- \(T\) is a temperature parameter controlling how strongly matchmaking favors similarly rated opponents.
+- $R_L$ is the learner's rating;
+- $R_i$ is the opponent's rating;
+- $T$ controls how strongly matchmaking favors similarly rated opponents.
 
-This creates a simple adaptive curriculum: as the PPO agent becomes stronger, the distribution of opponents it encounters changes with it.
+This creates a simple adaptive curriculum as the learner improves.
 
-## PPO Checkpoints
+## Minimax Baseline
 
-Rating updates and model checkpoints use separate schedules.
+The project includes a depth-limited Minimax agent with **alpha-beta pruning**.
 
-For example:
+The heuristic evaluates:
 
-```text
-10k  → Elo evaluation
-20k  → Elo evaluation
-25k  → Elo evaluation + checkpoint
-30k  → Elo evaluation
-40k  → Elo evaluation
-50k  → Elo evaluation + checkpoint
-...
-```
+- immediate and potential winning lines;
+- opponent threats;
+- two- and three-piece combinations;
+- center-column control.
 
-When a checkpoint is created, the current PPO model is frozen and added to the league with the learner's current Elo.
-
-Historical checkpoints can later become opponents for newer versions of the policy.
-
-## Minimax Agent
-
-The project also contains a traditional **Minimax Connect Four agent with alpha-beta pruning**.
-
-Minimax serves two purposes:
-
-1. It provides a strong non-learning baseline for evaluating PPO.
-2. It provides stronger opponents in the self-play league.
-
-Different search depths can be used:
+Two search depths are used as benchmarks:
 
 ```python
 MiniMaxAgent(depth=2)
 MiniMaxAgent(depth=4)
 ```
 
-The heuristic considers features such as:
+These provide classical game-playing baselines against which the learned PPO policy can be compared.
 
-- two-in-a-row opportunities;
-- three-in-a-row opportunities;
-- opponent threats;
-- center-column control.
+## Training Results
 
-Terminal positions receive large positive or negative values, with depth taken into account to prefer faster wins and delay unavoidable losses.
+The final experiment trained the PPO agent for **1,000,000 timesteps**.
+
+During training, the learner was periodically evaluated against fixed baselines and historical PPO checkpoints.
+
+The experiment showed a clear progression in policy strength:
+
+- early policies struggled against tactical and Minimax opponents;
+- the learner progressively outperformed older PPO checkpoints;
+- performance against the Tactical agent improved substantially;
+- Minimax depth 2 changed from a very difficult opponent to one the learner could frequently beat;
+- Minimax depth 4 remained the strongest fixed benchmark and approached roughly competitive performance late in training.
+
+The project therefore demonstrates that self-play produced meaningful policy improvement, while also showing that high performance against previous policies does not necessarily imply mastery of Connect Four.
+
+### Learner Elo
+
+![Learner Elo during training](results/plots/learner_elo.png)
+
+The league rating generally increased as training progressed, although Elo should primarily be interpreted as a relative measure within the evolving league.
+
+### Performance Against Fixed Opponents
+
+![Performance against baseline opponents](results/plots/baseline_performance.png)
+
+This plot shows the learner's match score against the fixed baseline agents throughout training.
+
+### Performance Against Minimax
+
+![Performance against Minimax](results/plots/minimax_performance.png)
+
+Minimax provides a useful fixed reference because its policy does not change during training.
+
+### Historical Self-Play
+
+![Performance against historical PPO checkpoints](results/plots/historical_ppo_performance.png)
+
+Later policies generally outperform older PPO checkpoints, demonstrating improvement within the self-play population.
+
+## Evaluation
+
+Agents can be benchmarked using the evaluation CLI.
+
+For example:
+
+```bash
+python -m src.evaluation.run_evaluation \
+    --agent ppo \
+    --opponent minimax \
+    --num-episodes 1000
+```
+
+Evaluation tracks:
+
+- wins;
+- draws;
+- losses;
+- win rate;
+- performance when playing first;
+- performance when playing second;
+- average reward;
+- average game length;
+- illegal actions.
+
+Evaluation can also use varied legal starting states to reduce dependence on repeatedly playing from the empty board.
+
+```bash
+python -m src.evaluation.run_evaluation \
+    --agent ppo \
+    --opponent minimax \
+    --num-episodes 1000 \
+    --varied-starting-states
+```
 
 ## Installation
 
-### 1. Clone the repository
+Clone the repository:
 
 ```bash
 git clone <repository-url>
 cd RL-Connect-Four
 ```
 
-### 2. Create a Conda environment
-
-The project is developed using **Python 3.10**.
+Create the environment:
 
 ```bash
-conda create -n connect4-rl python=3.10
+conda create -n connect4-rl python=3.11
 conda activate connect4-rl
 ```
 
-### 3. Install dependencies
+Install the dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -192,225 +228,74 @@ pip install -r requirements.txt
 
 ## Training
 
-Training uses `MaskablePPO` together with the custom Connect Four environment and self-play manager.
-
-Run the training script from the repository root:
+Start self-play training from the repository root:
 
 ```bash
 python -m src.training.train_maskable_ppo
 ```
 
-The PPO learner is trained against opponents supplied by the self-play league.
-
-A typical configuration uses parameters such as:
-
-```text
-Learning rate:     3e-4
-Rollout steps:     1024
-Batch size:        256
-PPO epochs:        10
-Gamma:             0.99
-GAE lambda:        0.95
-Entropy coefficient: 0.01
-```
-
-These parameters may change between experiments.
-
-## Monitoring Training
-
-Stable-Baselines3 metrics can be inspected using TensorBoard.
-
-Start TensorBoard with:
+Training metrics can be inspected with TensorBoard:
 
 ```bash
 tensorboard --logdir runs/
 ```
 
-Then open the address shown by TensorBoard in your browser.
-
-Useful PPO metrics include:
-
-- `approx_kl`
-- `clip_fraction`
-- `entropy_loss`
-- `explained_variance`
-- `policy_gradient_loss`
-- `value_loss`
-- training FPS
-
-The self-play callback additionally logs:
-
-- current learner Elo;
-- selected evaluation opponents;
-- win/draw/loss results;
-- proposed Elo changes;
-- completed rating periods;
-- saved PPO checkpoints;
-- league size.
-
-Example:
-
-```text
-Rating period | timestep=50000 | learner_elo=1342.6
-
-vs PPO_25000    | W/D/L=72/2/26 | opponent_elo=1250.4 | proposed_delta=+...
-vs Tactical     | W/D/L=64/1/35 | opponent_elo=1318.2 | proposed_delta=+...
-vs MiniMax2     | W/D/L=18/0/82 | opponent_elo=1450.7 | proposed_delta=-...
-
-Rating period complete | learner_elo=1342.6->...
-```
-
-## Evaluation
-
-Agents can be evaluated over many Connect Four games using the project's evaluation utilities.
-
-Evaluation tracks metrics including:
-
-- wins;
-- losses;
-- draws;
-- win rate;
-- performance when moving first;
-- performance when moving second;
-- average reward;
-- average game length;
-- illegal actions.
-
-For reproducible benchmark evaluation, the trained policy can be run deterministically.
-
-For Elo evaluation during self-play, stochastic PPO actions can be used to generate a more representative distribution of games.
-
 ## Testing
 
-The project includes unit tests for the environment, agents, Minimax implementation, and self-play components.
-
-Run the full test suite with:
+Run the complete test suite with:
 
 ```bash
 pytest
 ```
 
-For more detailed output:
+or:
 
 ```bash
 pytest -v
 ```
 
-A specific test file can be run with:
-
-```bash
-pytest tests/test_minimax_agent.py -v
-```
-
-## Project Structure
-
-A simplified overview of the repository:
-
-```text
-RL-Connect-Four/
-│
-├── src/
-│   ├── agents/
-│   │   └── agents.py
-│   │
-│   ├── envs/
-│   │   ├── connect_four_env.py
-│   │   └── connect_four/
-│   │       └── game.py
-│   │
-│   ├── evaluation/
-│   │   └── evaluator.py
-│   │
-│   ├── self_play/
-│   │   └── self_play_manager.py
-│   │
-│   └── training/
-│       └── train_maskable_ppo.py
-│
-├── tests/
-├── models/
-├── results/
-├── runs/
-├── requirements.txt
-└── README.md
-```
-
-## Agents
-
-### Random Agent
-
-Selects uniformly from the currently legal actions.
-
-### Tactical Agent
-
-Uses simple tactical rules to make stronger decisions than a purely random policy.
-
-### Minimax Agent
-
-Uses depth-limited Minimax search with alpha-beta pruning and a Connect Four-specific heuristic.
-
-### PPO Agent
-
-A neural-network policy trained using Maskable PPO.
-
-Historical versions of the PPO policy can be frozen and added to the self-play league.
-
-## Motivation
-
-Connect Four is a useful environment for experimenting with reinforcement learning because it has:
-
-- simple rules;
-- a discrete action space;
-- deterministic transitions;
-- sparse terminal rewards;
-- adversarial gameplay;
-- a large enough state space to make naive enumeration impractical;
-- strong classical search algorithms that provide useful benchmarks.
-
-This makes it possible to directly compare reinforcement learning against traditional game-playing techniques such as Minimax while experimenting with self-play and adaptive opponent selection.
-
-## Current Research Questions
-
-The project is intended to explore questions such as:
-
-- Can PPO learn a strong Connect Four policy through self-play?
-- How does PPO compare with depth-limited Minimax?
-- Does Elo-based matchmaking provide a useful training curriculum?
-- How quickly does the learner outperform its historical checkpoints?
-- How important is opponent diversity during self-play?
-- How does stochastic PPO evaluation compare with deterministic evaluation?
-- How does policy strength evolve throughout training?
-
-## Future Work
-
-Possible extensions include:
-
-- parallel/vectorized training environments;
-- larger PPO architectures;
-- deeper Minimax opponents;
-- improved opponent sampling strategies;
-- prioritized historical self-play;
-- Elo visualizations over training time;
-- checkpoint-vs-checkpoint tournaments;
-- alternative rating systems such as Glicko;
-- DQN-based agents;
-- Monte Carlo Tree Search;
-- AlphaZero-style policy/value learning;
+The tests cover the game environment, agents, Minimax implementation, evaluation logic, and self-play components.
 
 ## Technologies
 
 - Python
 - NumPy
+- Pandas
+- Matplotlib
 - Gymnasium
 - Stable-Baselines3
 - sb3-contrib
 - PyTorch
-- Loguru
 - TensorBoard
 - Pytest
 
-## License
+## What I Learned
 
-This project is intended for educational and research purposes.
+This project was primarily an exploration of reinforcement learning in an adversarial environment.
 
-Add a license file if you plan to distribute or reuse the project publicly.
+Some of the most important lessons were:
+
+- **Self-play requires opponent diversity.** Training exclusively against recent versions of the policy can reinforce weaknesses shared by the entire population.
+- **Evaluation should be separated from training.** Using dedicated evaluation games makes metrics such as Elo much easier to interpret.
+- **Fixed baselines are important.** Historical PPO checkpoints show relative self-play progress, while Minimax and tactical agents provide stable external reference points.
+- **Action masking simplifies learning.** Preventing illegal actions allows PPO to focus on strategy instead of learning the rules of valid column selection through punishment.
+- **Evaluation methodology matters.** Starting position, stochasticity, opponent selection and the number of games can significantly influence measured performance.
+- **Higher Elo does not necessarily mean a universally stronger policy.** Ratings are relative to the population and evaluation procedure used to generate them.
+
+Most importantly, the project demonstrates both the strengths and limitations of relatively simple PPO self-play. The agent became substantially stronger over training and learned to outperform previous versions of itself, but it did not solve Connect Four or consistently dominate the strongest classical baseline.
+
+## Future Work
+
+Possible extensions include:
+
+- vectorized training environments;
+- improved opponent sampling;
+- larger policy networks;
+- deeper Minimax evaluation;
+- checkpoint-vs-checkpoint tournaments;
+- Glicko or TrueSkill ratings;
+- DQN-based agents;
+- Monte Carlo Tree Search;
+- AlphaZero-style policy/value learning.
+
+The current version is intentionally kept as a completed PPO self-play experiment rather than expanding the project indefinitely.

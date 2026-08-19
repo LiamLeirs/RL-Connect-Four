@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--opponent",
         choices=SUPPORTED_AGENT_TYPES,
-        default="random",
+        default="minimax",
         help="Agent used as the opponent.",
     )
 
@@ -117,7 +117,7 @@ def create_agent(
         return TacticalAgent()
 
     if agent_type == "minimax":
-        return MiniMaxAgent(depth=4)
+        return MiniMaxAgent(depth=2)
 
     if agent_type == "ppo":
         resolved_path = resolve_model_path(model_path)
