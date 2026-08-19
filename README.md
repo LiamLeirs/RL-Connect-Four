@@ -4,6 +4,10 @@ A reinforcement learning project in which a **PPO agent learns to play Connect F
 
 The project explores self-play, adaptive opponent selection, Elo ratings, action masking, and the progression of a reinforcement learning policy from random play toward stronger classical opponents.
 
+<p align="center">
+  <img src="videos/ppo_selfplay.gif" alt="Trained PPO agent playing Connect Four" width="650">
+</p>
+
 ## Overview
 
 The agent is trained using **Maskable PPO** from `sb3-contrib` in a custom Gymnasium Connect Four environment.

@@ -301,10 +301,10 @@ class ConnectFourEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    opponent = HumanAgent()
+    opponent = RandomAgent()
     env = ConnectFourEnv(render_mode="human", opponent=opponent)
     model = MaskablePPO.load(
-        "models/ppo_selfplay/checkpoints/checkpoint_600000.zip")
+        "models/ppo_selfplay/final_model.zip")
     agent = ModelAgent(
         model=model, deterministic=True)
     obs, info = env.reset()
@@ -325,4 +325,8 @@ if __name__ == "__main__":
             action = agent.select_action(obs, info["action_mask"])
             obs, reward, terminated, truncated, info = env.step(action)
         env.render()
+        if terminated or truncated:
+            terminated = False
+            truncated = False
+            env.reset()
     env.close()
