@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--opponent",
         choices=SUPPORTED_AGENT_TYPES,
-        default="minimax",
+        default="random",
         help="Agent used as the opponent.",
     )
 

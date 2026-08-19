@@ -147,7 +147,15 @@ class ConnectFourEnv(gym.Env):
         )
 
         if varied_starting_state:
-            num_opening_moves = self.np_random.choice([0, 2, 4, 6])
+            if self.agent_player == 1:
+                opening_lengths = [0, 2, 4, 6]
+            else:
+                opening_lengths = [0, 2, 4]
+
+            num_opening_moves = int(
+                self.np_random.choice(opening_lengths)
+            )
+
             for _ in range(num_opening_moves):
                 legal_actions = np.flatnonzero(
                     self.game.get_legal_moves()
@@ -172,7 +180,7 @@ class ConnectFourEnv(gym.Env):
         result = None
 
         # If opponent is first player, make opponent move
-        if self.agent_player == -1:
+        if self.game.get_current_player() == self.opponent_player:
             opponent_action = self._choose_opponent_action()
             result = self.game.make_move(opponent_action)
             self._animate_move(result)
